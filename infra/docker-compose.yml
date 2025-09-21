@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: mvp-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  server:
+    build:
+      context: ../server
+    container_name: mvp-server
+    restart: unless-stopped
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/appdb
+    depends_on:
+      - mongo
+    ports:
+      - "8000:8000"
+
+  app:
+    build:
+      context: ../app
+    container_name: mvp-app
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_SERVER_BASE_URL=http://server:8000
+
+volumes:
+  mongo-data:
