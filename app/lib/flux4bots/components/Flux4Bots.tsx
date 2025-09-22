@@ -7,9 +7,14 @@ import type {
 import { getAtPointer, setAtPointer, encodePointerSegment, joinPointer } from '../core/pointer';
 import { resolveBindingPath } from '../core/binding';
 import { compareDocsToPatch, applyPatch } from '../core/patch';
+import { validateTemplate } from '../core/validate';
 
 export function Flux4Bots(props: Flux4BotsProps) {
   const { template, store, mode = 'diff', actions = {}, ui } = props;
+
+  // collect template warnings once per template
+  const templateWarnings = useMemo(() => validateTemplate(template), [template]);
+
   const uiCfg = { showPatchPreview: true, showApplyButton: true, showCurrentJson: true, ...(ui || {}) };
 
   const [original, setOriginal] = useState<any | null>(null);
@@ -48,9 +53,9 @@ export function Flux4Bots(props: Flux4BotsProps) {
     setVars(prev => ({ ...prev, [id]: value }));
   }
 
-  // Widget renderers
+  /* ------------------- renderers ------------------- */
+
   function renderText(w: TextWidget) {
-    // If bound, use JSON pointer; else capture in vars
     const boundPath = working ? resolveBindingPath(w.binding, working) : null;
     const value = boundPath && working ? getAtPointer(working, boundPath) : (vars[w.id] ?? '');
 
@@ -80,7 +85,14 @@ export function Flux4Bots(props: Flux4BotsProps) {
           style={{ padding: 8, width: 360 }}
           disabled={!!w.options?.readOnly && !boundPath}
         />
-        {boundPath && <div style={{ fontSize: 12, opacity: 0.6 }}>{boundPath}</div>}
+        {w.binding && !boundPath && (
+          <div style={{ fontSize: 12, color: '#b3261e', marginTop: 4 }}>
+            Binding path could not resolve at runtime.
+          </div>
+        )}
+        {boundPath && (
+          <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>{boundPath}</div>
+        )}
       </div>
     );
   }
@@ -109,7 +121,14 @@ export function Flux4Bots(props: Flux4BotsProps) {
           {value === '' && <option value="" disabled>— select —</option>}
           {values.map(v => <option key={v} value={v}>{v}</option>)}
         </select>
-        {boundPath && <div style={{ fontSize: 12, opacity: 0.6 }}>{boundPath}</div>}
+        {w.binding && !boundPath && (
+          <div style={{ fontSize: 12, color: '#b3261e', marginTop: 4 }}>
+            Binding path could not resolve at runtime.
+          </div>
+        )}
+        {boundPath && (
+          <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>{boundPath}</div>
+        )}
       </div>
     );
   }
@@ -137,7 +156,6 @@ export function Flux4Bots(props: Flux4BotsProps) {
                   base: {base}
                 </div>
               )}
-              {/* If expandable is true we still always show fields (simple MVP) */}
               {w.item.fields.map((f) => {
                 const fAny = f as any;
                 const fieldPath = joinPointer(base, fAny.binding?.path ?? '');
@@ -207,7 +225,6 @@ export function Flux4Bots(props: Flux4BotsProps) {
     const obj = getAtPointer(working, basePath);
     const keys = (obj && typeof obj === 'object') ? Object.keys(obj) : [];
 
-    // read previous selection if bound (optional)
     const boundPath = resolveBindingPath(w.binding, working);
     const selected = boundPath ? getAtPointer(working, boundPath) : null;
     const isMulti = w.options.selection === 'multiple';
@@ -272,7 +289,6 @@ export function Flux4Bots(props: Flux4BotsProps) {
               helpers: { encode: encodePointerSegment, get: getAtPointer }
             });
             setExplicitOps(ops);
-            // Also preview the result
             if (original) {
               const preview = applyPatch(original, ops);
               setWorking(preview);
@@ -296,7 +312,6 @@ export function Flux4Bots(props: Flux4BotsProps) {
     if (w.type === 'list') return <div>{renderList(w)}</div>;
     if (w.type === 'field-picker') return <div>{renderFieldPicker(w)}</div>;
     if (w.type === 'action') return <div>{renderAction(w)}</div>;
-    // **Fix:** no reference to w.id here
     return <div style={{ color: 'crimson' }}>Unsupported widget</div>;
   }
 
@@ -308,6 +323,15 @@ export function Flux4Bots(props: Flux4BotsProps) {
         <p style={{ opacity: 0.8 }}>Loading document…</p>
       ) : (
         <>
+          {templateWarnings.length > 0 && (
+            <div style={{ marginBottom: 12, padding: 10, border: '1px solid #f0c2bf', background: '#fff5f4', borderRadius: 8 }}>
+              <div style={{ fontWeight: 600, color: '#b3261e', marginBottom: 6 }}>Template Warnings</div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {templateWarnings.map((msg, i) => <li key={i} style={{ marginBottom: 4 }}>{msg}</li>)}
+              </ul>
+            </div>
+          )}
+
           <section style={{ padding: 12, border: '1px solid #ddd', borderRadius: 8, marginBottom: 16 }}>
             <h3 style={{ marginTop: 0 }}>{template.name}</h3>
             {template.layout.type !== 'vertical'

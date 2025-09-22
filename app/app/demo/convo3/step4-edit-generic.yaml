@@ -1,0 +1,33 @@
+version: 1
+name: "Step 4 — Edit any field"
+widgets:
+  - id: pickItem
+    type: field-picker
+    label: "Pick item (index) in chosen array"
+    binding: { path: "/_design/itemPtr" }
+    options: { basePath: "${/_design/targetArray}", selection: "single" }
+
+  - id: pickField
+    type: field-picker
+    label: "Pick field in that item"
+    binding: { path: "/_design/fieldPtr" }
+    options: { basePath: "${/_design/itemPtr}", selection: "single" }
+
+  - id: val
+    type: text
+    label: "Value"
+    binding: { path: "${/_design/fieldPtr}" }
+
+  - id: newKey
+    type: text
+    label: "New field name (optional)"
+    # unbound -> vars['newKey']
+
+  - id: addField
+    type: action
+    label: "Add Field to Selected Item"
+    options: { action: "add-field" }
+
+layout:
+  type: vertical
+  children: [pickItem, pickField, val, newKey, addField]

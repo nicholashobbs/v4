@@ -1,0 +1,15 @@
+version: 1
+title: "Convo3 — Build JSON From Scratch"
+
+initial:
+  doc: {}
+
+steps:
+  - template: "/app/app/demo/convo3/step1-create-sections.yaml"
+    mode: "explicit"
+
+  - template: "/app/app/demo/convo3/step2-create-list.yaml"
+    mode: "explicit"
+
+  - template: "/app/app/demo/convo3/step3-push-objects.yaml"
+    mode: "explicit"

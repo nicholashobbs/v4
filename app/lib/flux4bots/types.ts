@@ -4,9 +4,7 @@ export type Binding = { path: Pointer }; // may include ${/pointer} segments
 
 export type TextOptions = { readOnly?: boolean };
 export type SelectOptions =
-  | { values?: string[] } // explicit list
-  // (optional future: dynamic source)
-  ;
+  | { values?: string[] }; // explicit list
 
 export type FieldPickerOptions = { basePath: Pointer; selection: 'single' | 'multiple' };
 
@@ -53,27 +51,27 @@ export interface DocumentStore {
   applyPatch(ops: Operation[]): Promise<any>;
 }
 
-// JSON Patch Operation (RFC6902 subset)
+// ---- JSON Patch (subset we use) ----
 export type Operation =
-  | { op: 'add'; path: Pointer; value: any }
-  | { op: 'remove'; path: Pointer }
-  | { op: 'replace'; path: Pointer; value: any };
+  | { op: 'add'; path: string; value: any }
+  | { op: 'replace'; path: string; value: any }
+  | { op: 'remove'; path: string };
 
-// Action handler receives context and returns explicit ops
+// ---- Action handler context & registry ----
 export type ActionHandlerContext = {
-  doc: any;               // original document
-  working: any;           // current working draft (after UI edits)
-  vars: Record<string, any>; // values of unbound fields by widget id
+  doc: any;                        // original doc (before action)
+  working: any;                    // current working doc (preview)
+  vars: Record<string, any>;       // unbound widget values
   helpers: {
-    encode: (s: string) => string;
-    get: (d: any, p: Pointer) => any;
+    encode: (s: string) => string; // JSON Pointer segment encoder
+    get: (obj: any, ptr: string) => any;
   };
 };
 
-export type ActionRegistry = {
-  [actionName: string]: (ctx: ActionHandlerContext) => Operation[];
-};
+export type ActionHandler = (ctx: ActionHandlerContext) => Operation[];
+export type ActionRegistry = Record<string, ActionHandler>;
 
+// ---- Flux4Bots props ----
 export type Flux4BotsProps = {
   template: Template;
   store: DocumentStore;

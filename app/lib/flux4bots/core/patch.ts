@@ -1,13 +1,21 @@
 import * as jsonpatch from 'fast-json-patch';
 import type { Operation } from '../types';
 
-export function compareDocsToPatch(original: any, working: any): Operation[] {
-  const full = jsonpatch.compare(original, working) as Operation[];
-  // Keep to add/replace/remove for simplicity
-  return full.filter(op => op.op === 'add' || op.op === 'replace' || op.op === 'remove');
+// Diff two docs and return our Operation[]
+export function compareDocsToPatch(a: any, b: any): Operation[] {
+  const raw = jsonpatch.compare(a, b) as Array<{ op: string; path: string; value?: any }>;
+  return raw
+    .filter(o => o.op === 'add' || o.op === 'replace' || o.op === 'remove')
+    .map(o => {
+      if (o.op === 'remove') {
+        return { op: 'remove', path: o.path } as Operation;
+      }
+      return { op: o.op as 'add' | 'replace', path: o.path, value: (o as any).value } as Operation;
+    });
 }
 
+// Apply our Operation[] using fast-json-patch under the hood
 export function applyPatch(doc: any, ops: Operation[]): any {
-  const res = jsonpatch.applyPatch(doc, ops as any, false);
-  return res.newDocument;
+  const cloned = JSON.parse(JSON.stringify(doc));
+  return jsonpatch.applyPatch(cloned, ops as any).newDocument;
 }
