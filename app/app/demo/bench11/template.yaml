@@ -1,0 +1,23 @@
+version: 1
+name: "Projects (expandable list) — Flux4Bots"
+widgets:
+  - id: projects
+    type: list
+    label: "Projects"
+    binding: { path: "/projects" }
+    item:
+      expandable: true
+      fields:
+        - id: name
+          type: text
+          label: "Project Name"
+          options: { readOnly: true }
+          binding: { path: "/name" }
+        - id: status
+          type: select
+          label: "Status"
+          options: { values: ["Not Started","In Progress","Completed"] }
+          binding: { path: "/status" }
+layout:
+  type: vertical
+  children: [projects]
