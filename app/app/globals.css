@@ -1,0 +1,5 @@
+@import "tailwindcss";
+
+/* Lock the page height to viewport; only inner panels scroll */
+html, body, :root { height: 100%; }
+body { overflow: hidden; }

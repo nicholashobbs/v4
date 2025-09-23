@@ -1,0 +1,13 @@
+version: 1
+name: "Step 1 — What is your name?"
+widgets:
+  - id: name
+    type: text
+    label: "Name"
+  - id: go
+    type: action
+    label: "Save name"
+    options: { action: "set-contact-name" }
+layout:
+  type: vertical
+  children: [name, go]

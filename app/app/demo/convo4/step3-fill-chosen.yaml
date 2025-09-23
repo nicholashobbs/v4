@@ -1,0 +1,20 @@
+version: 1
+name: "Step 3 — Enter values for selected fields"
+widgets:
+  - id: contactFields
+    type: list
+    label: "Contact fields"
+    source:
+      type: keys
+      basePath: "/contact"
+      exclude: ["name"]   # don't render an input for 'name'
+    item:
+      expandable: false
+      fields:
+        - id: value
+          type: text
+          label: "Value"
+          binding: { path: "" }   # binds directly to /contact/<key>
+layout:
+  type: vertical
+  children: [contactFields]

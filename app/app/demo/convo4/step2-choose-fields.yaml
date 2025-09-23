@@ -1,0 +1,31 @@
+version: 1
+name: "Step 2 — What other contact info would you like to add?"
+widgets:
+  - id: choosePhone
+    type: select
+    label: "phone"
+    options: { values: ["Skip","Add"] }
+
+  - id: chooseEmail
+    type: select
+    label: "email"
+    options: { values: ["Skip","Add"] }
+
+  - id: chooseLink
+    type: select
+    label: "link"
+    options: { values: ["Skip","Add"] }
+
+  - id: chooseLocation
+    type: select
+    label: "location"
+    options: { values: ["Skip","Add"] }
+
+  - id: go
+    type: action
+    label: "Create selected fields"
+    options: { action: "create-contact-fields" }
+
+layout:
+  type: vertical
+  children: [choosePhone, chooseEmail, chooseLink, chooseLocation, go]

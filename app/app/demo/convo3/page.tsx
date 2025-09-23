@@ -46,7 +46,6 @@ export default async function Page() {
     }))
   );
 
-  // ✅ Return JSX here
   return (
     <ClientConvo3
       title={convo.title ?? 'Convo3'}

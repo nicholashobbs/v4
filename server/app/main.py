@@ -1,11 +1,39 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Any, Dict, List, Optional
 from bson import ObjectId
 from pymongo import MongoClient
 import os
 import jsonpatch
+
+# --- add near your imports ---
+from pydantic import BaseModel, Field
+from typing import List, Literal, Any, Optional, Dict
+from datetime import datetime
+
+# --- conversation models ---
+class OpModel(BaseModel):
+    op: Literal['add','replace','remove']
+    path: str
+    value: Optional[Any] = None
+
+class StepModel(BaseModel):
+    templatePath: str
+    mode: Literal['diff','explicit']
+    ops: List[OpModel]
+    at: datetime = Field(default_factory=datetime.utcnow)
+
+class ConversationCreate(BaseModel):
+    title: Optional[str] = None
+    initial: dict = Field(default_factory=dict)
+
+class ConversationUpdateTitle(BaseModel):
+    title: str
+
+class ConversationAppend(BaseModel):
+    templatePath: str
+    mode: Literal['diff','explicit']
+    ops: List[OpModel]
+
 
 # ---- Setup ----
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/appdb")
@@ -98,3 +126,71 @@ def apply_patch(object_id: str, body: PatchIn):
 
     db.objects.update_one({"_id": obj["_id"]}, {"$set": {"doc": updated}})
     return {"id": str(obj["_id"]), "doc": updated}
+
+# --- get collection ---
+def conversations():
+    return db["conversations"]
+
+# --- routes ---
+@app.post("/conversations")
+def create_conversation(payload: ConversationCreate):
+    doc = {
+        "title": payload.title or str(ObjectId()),
+        "initial": payload.initial,
+        "steps": [],
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+    }
+    ins = conversations().insert_one(doc)
+    doc["id"] = str(ins.inserted_id)
+    doc.pop("_id", None)
+    return doc
+
+@app.get("/conversations")
+def list_conversations():
+    items = []
+    for c in conversations().find({}, {"title":1, "updated_at":1}).sort("updated_at", -1):
+        items.append({"id": str(c["_id"]), "title": c.get("title"), "updated_at": c.get("updated_at")})
+    return {"items": items}
+
+@app.get("/conversations/{cid}")
+def get_conversation(cid: str):
+    c = conversations().find_one({"_id": ObjectId(cid)})
+    if not c:
+        raise HTTPException(status_code=404, detail="Not found")
+    c["id"] = str(c["_id"]); c.pop("_id", None)
+    return c
+
+@app.patch("/conversations/{cid}/title")
+def rename_conversation(cid: str, payload: ConversationUpdateTitle):
+    res = conversations().update_one({"_id": ObjectId(cid)},
+                                     {"$set": {"title": payload.title, "updated_at": datetime.utcnow()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
+
+@app.post("/conversations/{cid}/appendStep")
+def append_step(cid: str, payload: ConversationAppend):
+    st = {"templatePath": payload.templatePath, "mode": payload.mode, "ops": [op.model_dump() for op in payload.ops],
+          "at": datetime.utcnow()}
+    res = conversations().update_one({"_id": ObjectId(cid)},
+                                     {"$push": {"steps": st}, "$set": {"updated_at": datetime.utcnow()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
+
+@app.post("/conversations/{cid}/undo")
+def undo_last(cid: str):
+    res = conversations().update_one({"_id": ObjectId(cid)},
+                                     {"$pop": {"steps": 1}, "$set": {"updated_at": datetime.utcnow()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
+
+@app.post("/conversations/{cid}/reset")
+def reset_steps(cid: str):
+    res = conversations().update_one({"_id": ObjectId(cid)},
+                                     {"$set": {"steps": [], "updated_at": datetime.utcnow()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}

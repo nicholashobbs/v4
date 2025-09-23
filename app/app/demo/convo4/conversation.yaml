@@ -1,0 +1,15 @@
+version: 1
+title: "Convo4 — Contact Builder"
+
+initial:
+  doc: {}
+
+steps:
+  - template: "/app/app/demo/convo4/step1-name.yaml"
+    mode: "explicit"
+
+  - template: "/app/app/demo/convo4/step2-choose-fields.yaml"
+    mode: "explicit"
+
+  - template: "/app/app/demo/convo4/step3-fill-chosen.yaml"
+    mode: "diff"   # <-- change this from "explicit" to "diff"

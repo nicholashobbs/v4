@@ -6,6 +6,13 @@ export type TextOptions = { readOnly?: boolean };
 export type SelectOptions =
   | { values?: string[] }; // explicit list
 
+  // NEW: list items sourced from object keys
+export type KeysSource = {
+  type: 'keys';
+  basePath: Pointer;      // e.g. "/contact"
+  exclude?: string[];     // e.g. ["name"]
+};
+
 export type FieldPickerOptions = { basePath: Pointer; selection: 'single' | 'multiple' };
 
 export type TextWidget = {

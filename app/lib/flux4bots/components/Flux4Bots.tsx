@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
 import type {
-  Flux4BotsProps, Template, Widget, TextWidget, SelectWidget, ListWidget,
+  Flux4BotsProps, Widget, TextWidget, SelectWidget, ListWidget,
   FieldPickerWidget, ActionWidget, Operation
 } from '../types';
 import { getAtPointer, setAtPointer, encodePointerSegment, joinPointer } from '../core/pointer';
@@ -135,88 +135,186 @@ export function Flux4Bots(props: Flux4BotsProps) {
 
   function renderList(w: ListWidget) {
     if (!working) return null;
-    const arrPath = resolveBindingPath(w.binding, working);
-    if (!arrPath) return <div style={{ color: 'crimson' }}>List binding missing</div>;
 
-    const arr = getAtPointer(working, arrPath);
-    const items = Array.isArray(arr) ? arr : [];
-    const expandable = !!w.item.expandable;
+    // Use an alias to avoid TS narrowing to `never` for the keys-driven variant.
+    const anyW = w as any;
 
-    return (
-      <div style={{ marginBottom: 12 }}>
-        {w.label ? <h4 style={{ margin: '8px 0' }}>{w.label}</h4> : null}
-        {items.length === 0 && <div style={{ opacity: 0.7 }}>No items.</div>}
+    // ---- Case 1: existing behavior (array-driven via binding) ----
+    if (anyW.binding) {
+      const arrPath = resolveBindingPath(anyW.binding, working);
+      if (!arrPath) return <div style={{ color: 'crimson' }}>List binding missing</div>;
 
-        {items.map((_it: any, idx: number) => {
-          const base = `${arrPath}/${idx}`;
-          return (
-            <div key={base} style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginBottom: 8 }}>
-              {!expandable ? null : (
-                <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 6 }}>
-                  base: {base}
-                </div>
-              )}
-              {w.item.fields.map((f) => {
-                const fAny = f as any;
-                const fieldPath = joinPointer(base, fAny.binding?.path ?? '');
-                const asText = fAny.type === 'text';
-                const asSelect = fAny.type === 'select';
-                const label = fAny.label;
+      const arr = getAtPointer(working, arrPath);
+      const items = Array.isArray(arr) ? arr : [];
+      const expandable = !!w.item.expandable;
 
-                const value = getAtPointer(working, fieldPath);
-                if (asText) {
-                  if (fAny.options?.readOnly) {
+      return (
+        <div style={{ marginBottom: 12 }}>
+          {w.label ? <h4 style={{ margin: '8px 0' }}>{w.label}</h4> : null}
+          {items.length === 0 && <div style={{ opacity: 0.7 }}>No items.</div>}
+
+          {items.map((_it: any, idx: number) => {
+            const base = `${arrPath}/${idx}`;
+            return (
+              <div key={base} style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                {!expandable ? null : (
+                  <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 6 }}>
+                    base: {base}
+                  </div>
+                )}
+                {w.item.fields.map((f) => {
+                  const fAny = f as any;
+                  const rel = fAny.binding?.path ?? '';
+                  const fieldPath = rel === '' ? base : joinPointer(base, rel);
+                  const asText = fAny.type === 'text';
+                  const asSelect = fAny.type === 'select';
+                  const label = fAny.label;
+
+                  const value = getAtPointer(working, fieldPath);
+                  if (asText) {
+                    if (fAny.options?.readOnly) {
+                      return (
+                        <div key={fieldPath} style={{ marginBottom: 8 }}>
+                          {label ? <div style={{ fontWeight: 600 }}>{label}</div> : null}
+                          <div>{String(value ?? '')}</div>
+                          <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath} (read-only)</div>
+                        </div>
+                      );
+                    }
                     return (
                       <div key={fieldPath} style={{ marginBottom: 8 }}>
-                        {label ? <div style={{ fontWeight: 600 }}>{label}</div> : null}
-                        <div>{String(value ?? '')}</div>
-                        <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath} (read-only)</div>
+                        {label ? <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>{label}</label> : null}
+                        <input
+                          value={String(value ?? '')}
+                          onChange={e => {
+                            const next = JSON.parse(JSON.stringify(working));
+                            setAtPointer(next, fieldPath, e.target.value);
+                            setWorking(next);
+                          }}
+                          style={{ padding: 8, width: 360 }}
+                        />
+                        <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath}</div>
                       </div>
                     );
                   }
-                  return (
-                    <div key={fieldPath} style={{ marginBottom: 8 }}>
-                      {label ? <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>{label}</label> : null}
-                      <input
-                        value={String(value ?? '')}
-                        onChange={e => {
-                          const next = JSON.parse(JSON.stringify(working));
-                          setAtPointer(next, fieldPath, e.target.value);
-                          setWorking(next);
-                        }}
-                        style={{ padding: 8, width: 360 }}
-                      />
-                      <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath}</div>
-                    </div>
-                  );
-                }
-                if (asSelect) {
-                  const opts: string[] = fAny.options?.values ?? [];
-                  return (
-                    <div key={fieldPath} style={{ marginBottom: 8 }}>
-                      {label ? <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>{label}</label> : null}
-                      <select
-                        value={String(value ?? '')}
-                        onChange={e => {
-                          const next = JSON.parse(JSON.stringify(working));
-                          setAtPointer(next, fieldPath, e.target.value);
-                          setWorking(next);
-                        }}
-                        style={{ padding: 8, width: 360 }}
-                      >
-                        {opts.map(v => <option key={v} value={v}>{v}</option>)}
-                      </select>
-                      <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath}</div>
-                    </div>
-                  );
-                }
-                return <div key={fieldPath} style={{ color: 'crimson' }}>Unsupported item field</div>;
-              })}
-            </div>
-          );
-        })}
-      </div>
-    );
+                  if (asSelect) {
+                    const opts: string[] = fAny.options?.values ?? [];
+                    return (
+                      <div key={fieldPath} style={{ marginBottom: 8 }}>
+                        {label ? <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>{label}</label> : null}
+                        <select
+                          value={String(value ?? '')}
+                          onChange={e => {
+                            const next = JSON.parse(JSON.stringify(working));
+                            setAtPointer(next, fieldPath, e.target.value);
+                            setWorking(next);
+                          }}
+                          style={{ padding: 8, width: 360 }}
+                        >
+                          {opts.map((v: string) => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                        <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath}</div>
+                      </div>
+                    );
+                  }
+                  return <div key={fieldPath} style={{ color: 'crimson' }}>Unsupported item field</div>;
+                })}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // ---- Case 2: NEW behavior (keys-driven via source) ----
+    if (anyW.source?.type === 'keys') {
+      const basePath: string = anyW.source.basePath; // literal JSON Pointer
+      const obj = getAtPointer(working, basePath);
+      const keys = (obj && typeof obj === 'object') ? Object.keys(obj) : [];
+      const exclude = new Set<string>(anyW.source.exclude ?? []);
+      const showKeys = keys.filter(k => !exclude.has(k));
+      const expandable = !!w.item.expandable;
+
+      return (
+        <div style={{ marginBottom: 12 }}>
+          {w.label ? <h4 style={{ margin: '8px 0' }}>{w.label}</h4> : null}
+          {showKeys.length === 0 && <div style={{ opacity: 0.7 }}>No items.</div>}
+
+          {showKeys.map((k) => {
+            const base = `${basePath}/${encodePointerSegment(k)}`;
+            return (
+              <div key={base} style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                {!expandable ? null : (
+                  <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 6 }}>
+                    key: {k} • base: {base}
+                  </div>
+                )}
+                {w.item.fields.map((f) => {
+                  const fAny = f as any;
+                  const rel = fAny.binding?.path ?? '';
+                  const fieldPath = rel === '' ? base : joinPointer(base, rel);
+                  const asText = fAny.type === 'text';
+                  const asSelect = fAny.type === 'select';
+                  const label = fAny.label;
+
+                  const value = getAtPointer(working, fieldPath);
+                  if (asText) {
+                    if (fAny.options?.readOnly) {
+                      return (
+                        <div key={fieldPath} style={{ marginBottom: 8 }}>
+                          {label ? <div style={{ fontWeight: 600 }}>{label}</div> : null}
+                          <div>{String(value ?? '')}</div>
+                          <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath} (read-only)</div>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={fieldPath} style={{ marginBottom: 8 }}>
+                        {label ? <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>{label}</label> : null}
+                        <input
+                          value={String(value ?? '')}
+                          onChange={e => {
+                            const next = JSON.parse(JSON.stringify(working));
+                            setAtPointer(next, fieldPath, e.target.value);
+                            setWorking(next);
+                          }}
+                          style={{ padding: 8, width: 360 }}
+                        />
+                        <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath}</div>
+                      </div>
+                    );
+                  }
+                  if (asSelect) {
+                    const opts: string[] = fAny.options?.values ?? [];
+                    return (
+                      <div key={fieldPath} style={{ marginBottom: 8 }}>
+                        {label ? <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>{label}</label> : null}
+                        <select
+                          value={String(value ?? '')}
+                          onChange={e => {
+                            const next = JSON.parse(JSON.stringify(working));
+                            setAtPointer(next, fieldPath, e.target.value);
+                            setWorking(next);
+                          }}
+                          style={{ padding: 8, width: 360 }}
+                        >
+                          {opts.map((v: string) => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                        <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath}</div>
+                      </div>
+                    );
+                  }
+                  return <div key={fieldPath} style={{ color: 'crimson' }}>Unsupported item field</div>;
+                })}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // Fallback (shouldn't happen if schema is correct)
+    return <div style={{ color: 'crimson' }}>List misconfigured</div>;
   }
 
   function renderFieldPicker(w: FieldPickerWidget) {
@@ -226,54 +324,73 @@ export function Flux4Bots(props: Flux4BotsProps) {
     const keys = (obj && typeof obj === 'object') ? Object.keys(obj) : [];
 
     const boundPath = resolveBindingPath(w.binding, working);
-    const selected = boundPath ? getAtPointer(working, boundPath) : null;
     const isMulti = w.options.selection === 'multiple';
 
-    function toggle(key: string, checked: boolean) {
-      if (!boundPath) return; // unbound picker acts read-only
-      const next = JSON.parse(JSON.stringify(working));
-      if (isMulti) {
-        const cur: string[] = Array.isArray(getAtPointer(next, boundPath)) ? getAtPointer(next, boundPath) : [];
-        const newVal = checked ? Array.from(new Set([...cur, `${basePath}/${encodePointerSegment(key)}`]))
-                               : cur.filter((p: string) => !p.endsWith(`/${encodePointerSegment(key)}`));
-        setAtPointer(next, boundPath, newVal);
-      } else {
-        setAtPointer(next, boundPath, `${basePath}/${encodePointerSegment(key)}`);
-      }
-      setWorking(next);
+    // Read current selection: from doc if bound, else from vars[w.id]
+    const currentSel = boundPath
+        ? getAtPointer(working, boundPath)
+        : (vars[w.id] ?? (isMulti ? [] : null));
+
+    // Helper to write selection either to doc (bound) or to vars (unbound)
+    function writeSelection(nextValue: string | string[] | null) {
+        if (boundPath) {
+        const next = JSON.parse(JSON.stringify(working));
+        setAtPointer(next, boundPath, nextValue);
+        setWorking(next);
+        } else {
+        setVar(w.id, nextValue);
+        }
     }
 
-    const picked = (p: any) => {
-      if (isMulti) {
-        const arr: string[] = Array.isArray(p) ? p : [];
-        const set = new Set(arr);
-        return (k: string) => set.has(`${basePath}/${encodePointerSegment(k)}`);
-      }
-      return (k: string) => p === `${basePath}/${encodePointerSegment(k)}`;
-    };
+    function pointerForKey(k: string) {
+        return `${basePath}/${encodePointerSegment(k)}`;
+    }
 
-    const isChecked = picked(selected);
+    function isCheckedFor(picked: any) {
+        if (isMulti) {
+        const arr: string[] = Array.isArray(picked) ? picked : [];
+        const set = new Set(arr);
+        return (k: string) => set.has(pointerForKey(k));
+        }
+        return (k: string) => picked === pointerForKey(k);
+    }
+
+    const checked = isCheckedFor(currentSel);
+
+    function toggle(key: string, checkedNow: boolean) {
+        const ptr = pointerForKey(key);
+        if (isMulti) {
+        const cur: string[] = Array.isArray(currentSel) ? currentSel : [];
+        const next = checkedNow
+            ? Array.from(new Set([...cur, ptr]))
+            : cur.filter(p => p !== ptr);
+        writeSelection(next);
+        } else {
+        writeSelection(checkedNow ? ptr : null);
+        }
+    }
 
     return (
-      <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 12 }}>
         {w.label ? <label style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>{w.label}</label> : null}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          {keys.map(k => (
+            {keys.map(k => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <input
+                <input
                 type={isMulti ? 'checkbox' : 'radio'}
                 name={w.id}
-                checked={!!isChecked(k)}
+                checked={!!checked(k)}
                 onChange={e => toggle(k, e.target.checked)}
-              />
-              {k} <span style={{ opacity: 0.6, fontSize: 12 }}>({basePath}/{encodePointerSegment(k)})</span>
+                />
+                {k} <span style={{ opacity: 0.6, fontSize: 12 }}>({basePath}/{encodePointerSegment(k)})</span>
             </label>
-          ))}
-          {keys.length === 0 && <span style={{ opacity: 0.7 }}>No keys under {basePath}</span>}
+            ))}
+            {keys.length === 0 && <span style={{ opacity: 0.7 }}>No keys under {basePath}</span>}
         </div>
-      </div>
+        </div>
     );
-  }
+    }
+
 
   function renderAction(w: ActionWidget) {
     const name = w.options?.action;
@@ -349,16 +466,34 @@ export function Flux4Bots(props: Flux4BotsProps) {
               {uiCfg.showPatchPreview && (
                 <div>
                   <h4 style={{ margin: '8px 0' }}>Patch Preview ({mode})</h4>
-                  <pre style={{ background: '#f7f7f7', padding: 12, borderRadius: 8, maxHeight: 300, overflow: 'auto' }}>
-                    {JSON.stringify(patch, null, 2)}
-                  </pre>
-                  {uiCfg.showApplyButton && (
-                    <button onClick={onApply} disabled={patch.length === 0} style={{ padding: '8px 12px' }}>
-                      Apply Patch
-                    </button>
-                  )}
+
+                  {/* Scrollable preview container */}
+                  <div style={{ maxHeight: 300, overflow: 'auto', position: 'relative', paddingBottom: 8 }}>
+                    <pre style={{ background: '#f7f7f7', padding: 12, borderRadius: 8 }}>
+                      {JSON.stringify(patch, null, 2)}
+                    </pre>
+
+                    {/* Sticky apply footer inside this scroll container */}
+                    {uiCfg.showApplyButton && (
+                      <div
+                        style={{
+                          position: 'sticky',
+                          bottom: 0,
+                          background: 'rgba(255,255,255,0.9)',
+                          backdropFilter: 'saturate(180%) blur(6px)',
+                          paddingTop: 8,
+                          paddingBottom: 8,
+                        }}
+                      >
+                        <button onClick={onApply} disabled={patch.length === 0} style={{ padding: '8px 12px' }}>
+                          Apply Patch
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
+
               {uiCfg.showCurrentJson && (
                 <div>
                   <h4 style={{ margin: '8px 0' }}>Current JSON</h4>
