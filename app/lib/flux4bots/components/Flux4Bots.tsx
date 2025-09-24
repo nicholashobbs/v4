@@ -2,15 +2,39 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type {
   Flux4BotsProps, Widget, TextWidget, SelectWidget, ListWidget,
-  FieldPickerWidget, ActionWidget, Operation
+  FieldPickerWidget, ActionWidget, Operation, SelectValue, ActionRuntime
 } from '../types';
 import { getAtPointer, setAtPointer, encodePointerSegment, joinPointer } from '../core/pointer';
 import { resolveBindingPath } from '../core/binding';
 import { compareDocsToPatch, applyPatch } from '../core/patch';
 import { validateTemplate } from '../core/validate';
+import { ChipSelect } from './ChipSelect';
+
+type NormalizedOption = { value: string; label: string };
+
+const noopRuntime: ActionRuntime = {
+  enqueueSteps: () => {},
+  getState: () => undefined,
+  setState: () => {},
+  completeStep: () => {},
+};
+
+function normalizeSelectValues(values?: SelectValue[]): NormalizedOption[] {
+  if (!values) return [];
+  const out: NormalizedOption[] = [];
+  for (const raw of values) {
+    if (typeof raw === 'string') {
+      out.push({ value: raw, label: raw });
+    } else if (raw && typeof raw.value === 'string') {
+      out.push({ value: raw.value, label: raw.label ?? raw.value });
+    }
+  }
+  return out;
+}
 
 export function Flux4Bots(props: Flux4BotsProps) {
-  const { template, store, mode = 'diff', actions = {}, ui } = props;
+  const { template, store, mode = 'diff', actions = {}, ui, runtime: runtimeProp } = props;
+  const runtime = runtimeProp ?? noopRuntime;
 
   // collect template warnings once per template
   const templateWarnings = useMemo(() => validateTemplate(template), [template]);
@@ -98,28 +122,65 @@ export function Flux4Bots(props: Flux4BotsProps) {
   }
 
   function renderSelect(w: SelectWidget) {
-    const values = w.options?.values ?? [];
+    const variant = w.options?.variant ?? 'dropdown';
+    const allowMultiple = w.options?.multiple ?? (variant === 'chips');
+    const options = normalizeSelectValues(w.options?.values);
     const boundPath = working ? resolveBindingPath(w.binding, working) : null;
-    const value = boundPath && working ? getAtPointer(working, boundPath) : (vars[w.id] ?? '');
+    const rawValue = boundPath && working ? getAtPointer(working, boundPath) : vars[w.id];
+
+    const writeValue = (nextValue: any) => {
+      if (boundPath && working) {
+        const next = JSON.parse(JSON.stringify(working));
+        setAtPointer(next, boundPath, nextValue);
+        setWorking(next);
+      } else {
+        setVar(w.id, nextValue);
+      }
+    };
+
+    if (variant === 'chips') {
+      const selected: string[] = Array.isArray(rawValue)
+        ? rawValue.map((v: any) => String(v))
+        : rawValue != null && rawValue !== ''
+          ? [String(rawValue)]
+          : [];
+
+      const handleChange = (next: string[]) => {
+        if (allowMultiple) {
+          writeValue(next);
+        } else {
+          writeValue(next[0] ?? '');
+        }
+      };
+
+      return (
+        <div style={{ marginBottom: 12 }}>
+          {w.label ? <div style={{ fontWeight: 600, marginBottom: 6 }}>{w.label}</div> : null}
+          <ChipSelect options={options} selected={selected} multiple={allowMultiple} onChange={handleChange} />
+          {w.binding && !boundPath && (
+            <div style={{ fontSize: 12, color: '#b3261e', marginTop: 4 }}>
+              Binding path could not resolve at runtime.
+            </div>
+          )}
+          {boundPath && (
+            <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>{boundPath}</div>
+          )}
+        </div>
+      );
+    }
+
+    const value = rawValue == null ? '' : String(rawValue);
 
     return (
       <div style={{ marginBottom: 10 }}>
         {w.label ? <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>{w.label}</label> : null}
         <select
-          value={String(value ?? '')}
-          onChange={e => {
-            if (boundPath && working) {
-              const next = JSON.parse(JSON.stringify(working));
-              setAtPointer(next, boundPath, e.target.value);
-              setWorking(next);
-            } else {
-              setVar(w.id, e.target.value);
-            }
-          }}
+          value={value}
+          onChange={e => writeValue(e.target.value)}
           style={{ padding: 8, width: 360 }}
         >
           {value === '' && <option value="" disabled>— select —</option>}
-          {values.map(v => <option key={v} value={v}>{v}</option>)}
+          {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
         </select>
         {w.binding && !boundPath && (
           <div style={{ fontSize: 12, color: '#b3261e', marginTop: 4 }}>
@@ -197,8 +258,8 @@ export function Flux4Bots(props: Flux4BotsProps) {
                       </div>
                     );
                   }
-                  if (asSelect) {
-                    const opts: string[] = fAny.options?.values ?? [];
+                 if (asSelect) {
+                    const selectOpts = normalizeSelectValues(fAny.options?.values);
                     return (
                       <div key={fieldPath} style={{ marginBottom: 8 }}>
                         {label ? <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>{label}</label> : null}
@@ -211,7 +272,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
                           }}
                           style={{ padding: 8, width: 360 }}
                         >
-                          {opts.map((v: string) => <option key={v} value={v}>{v}</option>)}
+                          {selectOpts.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                         </select>
                         <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath}</div>
                       </div>
@@ -284,8 +345,8 @@ export function Flux4Bots(props: Flux4BotsProps) {
                       </div>
                     );
                   }
-                  if (asSelect) {
-                    const opts: string[] = fAny.options?.values ?? [];
+                 if (asSelect) {
+                    const selectOpts = normalizeSelectValues(fAny.options?.values);
                     return (
                       <div key={fieldPath} style={{ marginBottom: 8 }}>
                         {label ? <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>{label}</label> : null}
@@ -298,7 +359,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
                           }}
                           style={{ padding: 8, width: 360 }}
                         >
-                          {opts.map((v: string) => <option key={v} value={v}>{v}</option>)}
+                          {selectOpts.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                         </select>
                         <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath}</div>
                       </div>
@@ -398,12 +459,14 @@ export function Flux4Bots(props: Flux4BotsProps) {
       <div style={{ marginBottom: 12 }}>
         <button
           onClick={() => {
-            if (!original || !name || !actions[name]) return;
-            const ops = actions[name]({
+            const handler = name ? actions?.[name] : undefined;
+            if (!original || !name || !handler) return;
+            const ops = handler({
               doc: original,
               working,
               vars,
-              helpers: { encode: encodePointerSegment, get: getAtPointer }
+              helpers: { encode: encodePointerSegment, get: getAtPointer },
+              runtime,
             });
             setExplicitOps(ops);
             if (original) {

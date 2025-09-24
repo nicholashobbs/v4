@@ -48,9 +48,26 @@ export function validateTemplate(tpl: Template): string[] {
         if (path != null && typeof path !== 'string') {
           msgs.push(`select "${w.id}": binding.path must be a string if provided.`);
         }
-        const values = (w as any).options?.values;
+        const opts = (w as any).options;
+        const values = opts?.values;
         if (values != null && !Array.isArray(values)) {
-          msgs.push(`select "${w.id}": options.values must be an array of strings if provided.`);
+          msgs.push(`select "${w.id}": options.values must be an array if provided.`);
+        } else if (Array.isArray(values)) {
+          for (let i = 0; i < values.length; i += 1) {
+            const entry = values[i];
+            if (typeof entry === 'string') continue;
+            if (!entry || typeof entry !== 'object' || typeof entry.value !== 'string') {
+              msgs.push(`select "${w.id}": options.values[${i}] must be a string or object with "value".`);
+            } else if (entry.label != null && typeof entry.label !== 'string') {
+              msgs.push(`select "${w.id}": options.values[${i}].label must be a string if provided.`);
+            }
+          }
+        }
+        if (opts?.variant && opts.variant !== 'dropdown' && opts.variant !== 'chips') {
+          msgs.push(`select "${w.id}": options.variant must be "dropdown" or "chips" if set.`);
+        }
+        if (opts?.multiple != null && typeof opts.multiple !== 'boolean') {
+          msgs.push(`select "${w.id}": options.multiple must be a boolean if set.`);
         }
         break;
       }

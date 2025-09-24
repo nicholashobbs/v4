@@ -2,11 +2,33 @@ export type Pointer = string;
 
 export type Binding = { path: Pointer }; // may include ${/pointer} segments
 
-export type TextOptions = { readOnly?: boolean };
-export type SelectOptions =
-  | { values?: string[] }; // explicit list
+export type StepMode = 'diff' | 'explicit';
 
-  // NEW: list items sourced from object keys
+export type TemplateRef = {
+  templatePath: string;
+  mode: StepMode;
+};
+
+export type TemplateInstance = TemplateRef & {
+  template: Template;
+};
+
+export type LoadedStep = TemplateInstance;
+
+export type CommittedStep = TemplateRef & {
+  ops: Operation[];
+  at: string; // ISO string
+};
+
+export type TextOptions = { readOnly?: boolean };
+export type SelectValue = string | { value: string; label?: string };
+export type SelectOptions = {
+  values?: SelectValue[];
+  variant?: 'dropdown' | 'chips';
+  multiple?: boolean;
+};
+
+// list items sourced from object keys
 export type KeysSource = {
   type: 'keys';
   basePath: Pointer;      // e.g. "/contact"
@@ -30,7 +52,9 @@ export type ListItemSpec = {
   fields: (TextWidget | SelectWidget)[];
 };
 export type ListWidget = {
-  id: string; type: 'list'; label?: string; binding: Binding;
+  id: string; type: 'list'; label?: string;
+  binding?: Binding;
+  source?: KeysSource;
   item: ListItemSpec;
 };
 export type FieldPickerWidget = {
@@ -65,6 +89,13 @@ export type Operation =
   | { op: 'remove'; path: string };
 
 // ---- Action handler context & registry ----
+export type ActionRuntime = {
+  enqueueSteps: (steps: LoadedStep[]) => void;
+  getState?: <T = any>(key: string) => T | undefined;
+  setState?: <T = any>(key: string, value: T) => void;
+  completeStep?: () => void;
+};
+
 export type ActionHandlerContext = {
   doc: any;                        // original doc (before action)
   working: any;                    // current working doc (preview)
@@ -73,6 +104,7 @@ export type ActionHandlerContext = {
     encode: (s: string) => string; // JSON Pointer segment encoder
     get: (obj: any, ptr: string) => any;
   };
+  runtime: ActionRuntime;
 };
 
 export type ActionHandler = (ctx: ActionHandlerContext) => Operation[];
@@ -84,6 +116,7 @@ export type Flux4BotsProps = {
   store: DocumentStore;
   mode?: 'diff' | 'explicit';
   actions?: ActionRegistry;
+  runtime?: ActionRuntime;
   ui?: {
     showPatchPreview?: boolean;
     showApplyButton?: boolean;

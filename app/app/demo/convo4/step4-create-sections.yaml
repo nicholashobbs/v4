@@ -1,0 +1,23 @@
+version: 1
+name: "Step 4 — Choose resume sections"
+widgets:
+  - id: resumeSections
+    type: select
+    label: "Select the sections to build"
+    options:
+      variant: chips
+      multiple: true
+      values:
+        - { value: "experience", label: "Experience" }
+        - { value: "education", label: "Education" }
+        - { value: "skills", label: "Skills" }
+        - { value: "summary", label: "Summary" }
+
+  - id: go
+    type: action
+    label: "Prepare sections"
+    options: { action: "resume.init-sections" }
+
+layout:
+  type: vertical
+  children: [resumeSections, go]

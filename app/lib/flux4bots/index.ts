@@ -1,6 +1,7 @@
 export * from './types';
 
 export { Flux4Bots } from './components/Flux4Bots';
+export { ChipSelect } from './components/ChipSelect';
 export { getAtPointer, setAtPointer, encodePointerSegment, joinPointer, decodePointerSegment } from './core/pointer';
 export { resolveBindingPath } from './core/binding';
 export { compareDocsToPatch, applyPatch } from './core/patch';
@@ -10,3 +11,11 @@ export { FastApiDocumentStore } from './stores/fastapi';
 // YAML helpers
 export { useYamlTemplate } from './yaml/loader';          // client-only
 export { loadYamlTemplateFromString } from './yaml/parse'; // server-safe
+
+// Workflows
+export {
+  createResumeActions,
+  getResumeSectionSteps,
+  RESUME_SECTION_CONFIG,
+  type ResumeSectionKey,
+} from './workflows/resume';

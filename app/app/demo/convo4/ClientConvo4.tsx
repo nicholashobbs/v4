@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Flux4Bots } from '../../../lib/flux4bots'; // keep your existing export
-import type { Template, Operation, ActionRegistry } from '../../../lib/flux4bots';
+import { Flux4Bots, createResumeActions, getResumeSectionSteps } from '../../../lib/flux4bots';
+import type { Operation, ActionRegistry, LoadedStep as WorkflowStep, ResumeSectionKey } from '../../../lib/flux4bots';
 
 import {
   ConversationEngine,
@@ -12,11 +12,7 @@ import { FastApiAdapter } from '../../../lib/flux4bots/persistence/FastApiAdapte
 import { builtins } from '../../../lib/flux4bots/actions/builtins';
 
 // ---- Props from page.tsx (unchanged shape) ----
-type LoadedStep = {
-  templatePath: string;
-  mode: 'diff' | 'explicit';
-  template: Template;
-};
+type LoadedStep = WorkflowStep;
 
 const BASE = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:8000';
 
@@ -76,25 +72,102 @@ export default function ClientConvo4({
     if (el) el.scrollTop = el.scrollHeight;
   }, [engine.committed.length]); // reading getter triggers re-run after force()
 
-  // Actions used by step 1-2 (explicit steps)
-  const actions = useMemo<ActionRegistry>(() => ({
-    'set-contact-name': (ctx) => [
-      ...builtins.ensureObject('/contact')(ctx),
-      ...builtins.writeFromVar('name', '/contact/name')(ctx),
-    ],
+  const resumeSectionSteps = useMemo<Record<ResumeSectionKey, WorkflowStep>>(
+    () => getResumeSectionSteps() as Record<ResumeSectionKey, WorkflowStep>,
+    [],
+  );
+  const hubStep = useMemo(() => (steps.length > 0 ? steps[steps.length - 1] : null), [steps]);
 
-    'create-contact-fields': (ctx) => {
-      const wants: string[] = [];
-      if (String(ctx.vars.choosePhone || '') === 'Add') wants.push('phone');
-      if (String(ctx.vars.chooseEmail || '') === 'Add') wants.push('email');
-      if (String(ctx.vars.chooseLink || '') === 'Add') wants.push('link');
-      if (String(ctx.vars.chooseLocation || '') === 'Add') wants.push('location');
-      return [
+  const contactActions = useMemo<ActionRegistry>(() => {
+    const slugify = (input: string) => {
+      return input
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'field';
+    };
+
+    const uniqueContactKey = (ctx: Parameters<ActionRegistry[string]>[0], base: string) => {
+      const encode = ctx.helpers.encode;
+      let slug = base || 'field';
+      let counter = 2;
+      while (ctx.helpers.get(ctx.doc, `/contact/${encode(slug)}`) !== undefined) {
+        slug = `${base || 'field'}-${counter++}`;
+      }
+      return slug;
+    };
+
+    return {
+      'set-contact-name': (ctx) => [
         ...builtins.ensureObject('/contact')(ctx),
-        ...builtins.ensureKeys('/contact', wants, '')(ctx),
-      ];
-    },
-  }), []);
+        ...builtins.writeFromVar('name', '/contact/name')(ctx),
+      ],
+
+      'create-contact-fields': (ctx) => {
+        const rawSelection = ctx.vars.contactFields;
+        const selectedArray = Array.isArray(rawSelection)
+          ? rawSelection
+          : rawSelection != null
+            ? [rawSelection]
+            : [];
+        const selected = Array.from(new Set(selectedArray.map((val: any) => String(val))));
+
+        const builtinMap: Record<string, string> = {
+          phone: 'phone',
+          email: 'email',
+          link: 'link',
+          location: 'location',
+        };
+
+        const builtinKeys = selected
+          .map(key => builtinMap[key])
+          .filter((key): key is string => Boolean(key));
+
+        const ops: Operation[] = [
+          ...builtins.ensureObject('/contact')(ctx),
+          ...builtins.ensureKeys('/contact', builtinKeys, '')(ctx),
+        ];
+
+        // Remove built-in fields that were unselected
+        const encode = ctx.helpers.encode;
+        for (const key of Object.values(builtinMap)) {
+          if (!builtinKeys.includes(key)) {
+            const path = `/contact/${encode(key)}`;
+            if (ctx.helpers.get(ctx.doc, path) !== undefined) {
+              ops.push({ op: 'remove', path });
+            }
+          }
+        }
+
+        if (selected.includes('custom')) {
+          const label = String(ctx.vars.customContactField ?? '').trim();
+          if (label) {
+            const baseSlug = slugify(label);
+            const slug = uniqueContactKey(ctx, baseSlug);
+            const path = `/contact/${encode(slug)}`;
+            const exists = ctx.helpers.get(ctx.doc, path) !== undefined;
+            ops.push({ op: exists ? 'replace' : 'add', path, value: '' });
+          }
+        }
+
+        return ops;
+      },
+    };
+  }, []);
+
+  const resumeActions = useMemo<ActionRegistry>(
+    () => createResumeActions({
+      runtime: engine.runtime,
+      hubStep,
+      sectionSteps: resumeSectionSteps,
+    }),
+    [engine, hubStep, resumeSectionSteps],
+  );
+
+  const actions = useMemo<ActionRegistry>(() => ({
+    ...resumeActions,
+    ...contactActions,
+  }), [resumeActions, contactActions]);
 
   // Toolbar handlers
   async function onNew() {
@@ -170,7 +243,8 @@ export default function ClientConvo4({
                 template={curStep.template}
                 store={engine.store as any}
                 mode={curStep.mode}
-                actions={curStep.mode === 'explicit' ? actions : undefined}
+                actions={actions}
+                runtime={engine.runtime}
                 ui={uiFlags}
               />
             </div>

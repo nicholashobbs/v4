@@ -1,22 +1,7 @@
 import { applyPatch } from '../core/patch';
-import type { DocumentStore, Operation } from '../types';
-import type { Template } from '../types';
+import type { DocumentStore, Operation, LoadedStep, CommittedStep, StepMode, ActionRuntime } from '../types';
 
-export type StepMode = 'diff' | 'explicit';
-
-export type LoadedStep = {
-  templatePath: string;
-  mode: StepMode;
-  template: Template;
-  // (optional future) actions?: ActionRegistry
-};
-
-export type CommittedStep = {
-  templatePath: string;
-  mode: StepMode;
-  ops: Operation[];
-  at: string; // ISO
-};
+export type { LoadedStep, CommittedStep, StepMode } from '../types';
 
 export interface ConversationsAdapter {
   create(title: string, initial: any): Promise<{ id: string; title: string }>;
@@ -36,6 +21,9 @@ export class ConversationEngine {
   private _currentDoc: any;
   private _committed: CommittedStep[] = [];
   private _convId: string | null = null;
+  private _pendingSteps: LoadedStep[] = [];
+  private _sessionState: Record<string, any> = {};
+  private readonly _runtime: ActionRuntime;
 
   readonly store: DocumentStore;
 
@@ -50,22 +38,31 @@ export class ConversationEngine {
     this.steps = opts.steps;
     this.adapter = opts.adapter;
     this.onCommitted = opts.onCommitted;
+    this._runtime = {
+      enqueueSteps: (steps) => this.enqueueSteps(steps),
+      getState: (key) => this.getSessionState(key),
+      setState: (key, value) => this.setSessionState(key, value),
+      completeStep: () => this.completeCurrentStep(),
+    };
 
     // DocumentStore facade used by <Flux4Bots>
     this.store = {
       getDoc: async () => deepClone(this._currentDoc),
       applyPatch: async (ops: Operation[]) => {
         if (!ops || ops.length === 0) return deepClone(this._currentDoc);
-        const stepIdx = this.currentStepIndex;
-        const stepDef = this.steps[stepIdx];
+        const activeStep = this.currentStep;
         const committedStep: CommittedStep = {
-          templatePath: stepDef?.templatePath ?? '',
-          mode: stepDef?.mode ?? 'explicit',
+          templatePath: activeStep?.templatePath ?? '',
+          mode: activeStep?.mode ?? 'explicit',
           ops,
           at: new Date().toISOString(),
         };
         this._committed = [...this._committed, committedStep];
         this._currentDoc = applyPatch(this._currentDoc, ops);
+
+        if (this._pendingSteps.length > 0 && activeStep === this._pendingSteps[0]) {
+          this._pendingSteps = this._pendingSteps.slice(1);
+        }
 
         // persist if adapter + conv
         if (this.adapter && this._convId) {
@@ -86,13 +83,65 @@ export class ConversationEngine {
   get currentDoc() { return deepClone(this._currentDoc); }
   get committed(): CommittedStep[] { return this._committed.slice(); }
   get currentStepIndex(): number { return this._committed.length; }
-  get currentStep(): LoadedStep | null { return this.steps[this.currentStepIndex] ?? null; }
+  get currentStep(): LoadedStep | null {
+    if (this._pendingSteps.length > 0) return this._pendingSteps[0];
+    return this.steps[this.currentStepIndex] ?? null;
+  }
   get conversationId(): string | null { return this._convId; }
+
+  enqueueSteps(steps: LoadedStep[]) {
+    if (!Array.isArray(steps) || steps.length === 0) return;
+    this._pendingSteps = [...this._pendingSteps, ...steps.map(cloneLoadedStep)];
+  }
+
+  get runtime(): ActionRuntime { return this._runtime; }
+
+  private getSessionState<T>(key: string): T | undefined {
+    if (!(key in this._sessionState)) return undefined;
+    return deepClone(this._sessionState[key]) as T;
+  }
+
+  private setSessionState(key: string, value: any) {
+    if (value === undefined) {
+      delete this._sessionState[key];
+      return;
+    }
+    this._sessionState[key] = deepClone(value);
+  }
+
+  private clearSessionState() {
+    this._sessionState = {};
+  }
+
+  private completeCurrentStep() {
+    const activeStep = this.currentStep;
+    if (!activeStep) return;
+    const committedStep: CommittedStep = {
+      templatePath: activeStep.templatePath,
+      mode: activeStep.mode,
+      ops: [],
+      at: new Date().toISOString(),
+    };
+    this._committed = [...this._committed, committedStep];
+    if (this._pendingSteps.length > 0 && activeStep === this._pendingSteps[0]) {
+      this._pendingSteps = this._pendingSteps.slice(1);
+    }
+    if (this.adapter && this._convId) {
+      this.adapter.appendStep(this._convId, {
+        templatePath: committedStep.templatePath,
+        mode: committedStep.mode,
+        ops: committedStep.ops,
+      }).catch(() => {});
+    }
+    if (this.onCommitted) this.onCommitted(committedStep, deepClone(this._currentDoc));
+  }
 
   resetTo(doc: any) {
     this._initialDoc = deepClone(doc);
     this._currentDoc = deepClone(doc);
     this._committed = [];
+    this._pendingSteps = [];
+    this.clearSessionState();
   }
 
   async newConversation(title = cryptoUUID()) {
@@ -124,10 +173,12 @@ export class ConversationEngine {
       this._initialDoc = deepClone(c.initial);
       this._currentDoc = deepClone(c.initial);
       for (const st of c.steps) {
-        this._currentDoc = applyPatch(this._currentDoc, st.ops);
-      }
-      this._committed = c.steps.slice();
-    } catch { /* swallow */ }
+      this._currentDoc = applyPatch(this._currentDoc, st.ops);
+    }
+    this._committed = c.steps.slice();
+    this._pendingSteps = [];
+    this.clearSessionState();
+  } catch { /* swallow */ }
   }
 
   async renameConversation(newTitle: string) {
@@ -143,7 +194,8 @@ export class ConversationEngine {
     for (const st of next) doc = applyPatch(doc, st.ops);
     this._committed = next;
     this._currentDoc = doc;
-    if (this.adapter && this._convId) {
+    this._pendingSteps = [];
+  if (this.adapter && this._convId) {
       try { await this.adapter.undo(this._convId); } catch {}
     }
   }
@@ -151,6 +203,13 @@ export class ConversationEngine {
 
 /* ------------ small helpers ------------ */
 function deepClone<T>(v: T): T { return JSON.parse(JSON.stringify(v)); }
+function cloneLoadedStep(step: LoadedStep): LoadedStep {
+  return {
+    templatePath: step.templatePath,
+    mode: step.mode,
+    template: JSON.parse(JSON.stringify(step.template)),
+  };
+}
 function cryptoUUID(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
   // fallback
