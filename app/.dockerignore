@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+npm-debug.log
+.DS_Store
+
+# git and IDE artifacts
+.git
+.gitignore
+.env
+.env.local
+.env.*
+
+# TypeScript build info
+*.tsbuildinfo
