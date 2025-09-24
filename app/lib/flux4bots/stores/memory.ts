@@ -1,4 +1,4 @@
-import type { DocumentStore, Operation } from '../types';
+import type { DocumentStore, Operation } from '..';
 import { applyPatch } from '../core/patch';
 
 export class MemoryDocumentStore implements DocumentStore {

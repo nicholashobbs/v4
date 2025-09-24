@@ -1,18 +1,15 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Flux4Bots, createResumeActions, getResumeSectionSteps } from '../../../lib/flux4bots';
-import type { Operation, ActionRegistry, LoadedStep as WorkflowStep, ResumeSectionKey } from '../../../lib/flux4bots';
-
 import {
+  Flux4Bots,
+  createResumeActions,
+  getResumeSectionSteps,
   ConversationEngine,
-  type LoadedStep as EngineStep,
-} from '../../../lib/flux4bots/engine/ConversationEngine';
-import { FastApiAdapter } from '../../../lib/flux4bots/persistence/FastApiAdapter';
-import { builtins } from '../../../lib/flux4bots/actions/builtins';
-
-// ---- Props from page.tsx (unchanged shape) ----
-type LoadedStep = WorkflowStep;
+  FastApiAdapter,
+  builtins,
+} from '../../../lib/flux4bots';
+import type { Operation, ActionRegistry, LoadedStep, ResumeSectionKey } from '../../../lib/flux4bots';
 
 const BASE = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:8000';
 
@@ -46,7 +43,7 @@ export default function ClientConvo4({
     const adapter = new FastApiAdapter({ baseUrl: BASE });
     return new ConversationEngine({
       initialDoc,
-      steps: steps as EngineStep[],
+      steps,
       adapter,
       onCommitted: async () => {
         // refresh list after each commit
@@ -72,10 +69,7 @@ export default function ClientConvo4({
     if (el) el.scrollTop = el.scrollHeight;
   }, [engine.committed.length]); // reading getter triggers re-run after force()
 
-  const resumeSectionSteps = useMemo<Record<ResumeSectionKey, WorkflowStep>>(
-    () => getResumeSectionSteps() as Record<ResumeSectionKey, WorkflowStep>,
-    [],
-  );
+  const resumeSectionSteps = useMemo(() => getResumeSectionSteps(), []);
   const hubStep = useMemo(() => (steps.length > 0 ? steps[steps.length - 1] : null), [steps]);
 
   const contactActions = useMemo<ActionRegistry>(() => {

@@ -1,4 +1,4 @@
-import type { DocumentStore, Operation } from '../types';
+import type { DocumentStore, Operation } from '..';
 
 type Opts = { baseUrl: string; objectId: string };
 

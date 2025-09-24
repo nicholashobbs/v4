@@ -1,4 +1,6 @@
-import type { ConversationsAdapter, CommittedStep } from '../engine/ConversationEngine';
+import type { ConversationsAdapter } from '../engine/ConversationEngine';
+import type { CommittedStep } from '..';
+
 
 export class FastApiAdapter implements ConversationsAdapter {
   private baseUrl: string;

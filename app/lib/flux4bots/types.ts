@@ -2,33 +2,17 @@ export type Pointer = string;
 
 export type Binding = { path: Pointer }; // may include ${/pointer} segments
 
-export type StepMode = 'diff' | 'explicit';
-
-export type TemplateRef = {
-  templatePath: string;
-  mode: StepMode;
-};
-
-export type TemplateInstance = TemplateRef & {
-  template: Template;
-};
-
-export type LoadedStep = TemplateInstance;
-
-export type CommittedStep = TemplateRef & {
-  ops: Operation[];
-  at: string; // ISO string
-};
-
 export type TextOptions = { readOnly?: boolean };
+
+// Values for selects can be simple strings or labeled objects
 export type SelectValue = string | { value: string; label?: string };
 export type SelectOptions = {
-  values?: SelectValue[];
-  variant?: 'dropdown' | 'chips';
-  multiple?: boolean;
+  values?: SelectValue[];                 // explicit list
+  variant?: 'chips' | 'dropdown';         // UI variant used by Flux4Bots
+  multiple?: boolean;                     // allow multi-select (esp. for chips)
 };
 
-// list items sourced from object keys
+// NEW: list items sourced from object keys
 export type KeysSource = {
   type: 'keys';
   basePath: Pointer;      // e.g. "/contact"
@@ -51,12 +35,17 @@ export type ListItemSpec = {
   expandable?: boolean;
   fields: (TextWidget | SelectWidget)[];
 };
-export type ListWidget = {
-  id: string; type: 'list'; label?: string;
-  binding?: Binding;
-  source?: KeysSource;
-  item: ListItemSpec;
-};
+export type ListWidget =
+  | {
+      id: string; type: 'list'; label?: string;
+      binding: Binding;            // existing array-driven list
+      item: ListItemSpec;
+    }
+  | {
+      id: string; type: 'list'; label?: string;
+      source: KeysSource;          // NEW: keys-driven list
+      item: ListItemSpec;
+    };
 export type FieldPickerWidget = {
   id: string; type: 'field-picker'; label?: string;
   binding?: Binding; // optional: write result to a binding (string or array)
@@ -76,11 +65,19 @@ export type Template = {
   layout: { type: 'vertical'; children: string[] };
 };
 
-// Document store plugs in how to load/save the JSON doc
-export interface DocumentStore {
-  getDoc(): Promise<any>;
-  applyPatch(ops: Operation[]): Promise<any>;
-}
+// ---- Steps, templates & modes ----
+export type StepMode = 'diff' | 'explicit';
+
+export type TemplateRef = {
+  templatePath: string;
+  mode: StepMode;
+};
+
+// Instance that carries the actual parsed Template
+export type TemplateInstance = TemplateRef & { template: Template };
+
+// Engine-consumed step
+export type LoadedStep = TemplateInstance;
 
 // ---- JSON Patch (subset we use) ----
 export type Operation =
@@ -88,7 +85,19 @@ export type Operation =
   | { op: 'replace'; path: string; value: any }
   | { op: 'remove'; path: string };
 
-// ---- Action handler context & registry ----
+// Committed (persisted) step
+export type CommittedStep = TemplateRef & {
+  ops: Operation[];
+  at: string; // ISO timestamp
+};
+
+// Document store plugs in how to load/save the JSON doc
+export interface DocumentStore {
+  getDoc(): Promise<any>;
+  applyPatch(ops: Operation[]): Promise<any>;
+}
+
+// ---- Action runtime (injected by engine / UI) ----
 export type ActionRuntime = {
   enqueueSteps: (steps: LoadedStep[]) => void;
   getState?: <T = any>(key: string) => T | undefined;
@@ -96,6 +105,7 @@ export type ActionRuntime = {
   completeStep?: () => void;
 };
 
+// ---- Action handler context & registry ----
 export type ActionHandlerContext = {
   doc: any;                        // original doc (before action)
   working: any;                    // current working doc (preview)
@@ -104,7 +114,7 @@ export type ActionHandlerContext = {
     encode: (s: string) => string; // JSON Pointer segment encoder
     get: (obj: any, ptr: string) => any;
   };
-  runtime: ActionRuntime;
+  runtime: ActionRuntime;          // runtime hooks (enqueue steps, session state, etc.)
 };
 
 export type ActionHandler = (ctx: ActionHandlerContext) => Operation[];

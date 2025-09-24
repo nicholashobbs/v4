@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import YAML from 'js-yaml';
-import { loadYamlTemplateFromString, type Template } from '../../../lib/flux4bots';
+import { loadYamlTemplateFromString } from '../../../lib/flux4bots';
+import type { Template } from '../../../lib/flux4bots/types';
 import ClientConvo4 from './ClientConvo4';
 
 type StepDef = { template: string; mode: 'diff' | 'explicit' };

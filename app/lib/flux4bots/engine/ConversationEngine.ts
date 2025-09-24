@@ -1,7 +1,5 @@
 import { applyPatch } from '../core/patch';
-import type { DocumentStore, Operation, LoadedStep, CommittedStep, StepMode, ActionRuntime } from '../types';
-
-export type { LoadedStep, CommittedStep, StepMode } from '../types';
+import type { DocumentStore, Operation, LoadedStep, CommittedStep, ActionRuntime } from '../types';
 
 export interface ConversationsAdapter {
   create(title: string, initial: any): Promise<{ id: string; title: string }>;
@@ -173,12 +171,12 @@ export class ConversationEngine {
       this._initialDoc = deepClone(c.initial);
       this._currentDoc = deepClone(c.initial);
       for (const st of c.steps) {
-      this._currentDoc = applyPatch(this._currentDoc, st.ops);
-    }
-    this._committed = c.steps.slice();
-    this._pendingSteps = [];
-    this.clearSessionState();
-  } catch { /* swallow */ }
+        this._currentDoc = applyPatch(this._currentDoc, st.ops);
+      }
+      this._committed = c.steps.slice();
+      this._pendingSteps = [];
+      this.clearSessionState();
+    } catch { /* swallow */ }
   }
 
   async renameConversation(newTitle: string) {
@@ -195,7 +193,7 @@ export class ConversationEngine {
     this._committed = next;
     this._currentDoc = doc;
     this._pendingSteps = [];
-  if (this.adapter && this._convId) {
+    if (this.adapter && this._convId) {
       try { await this.adapter.undo(this._convId); } catch {}
     }
   }

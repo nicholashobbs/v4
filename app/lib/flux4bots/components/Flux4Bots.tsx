@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type {
   Flux4BotsProps, Widget, TextWidget, SelectWidget, ListWidget,
-  FieldPickerWidget, ActionWidget, Operation, SelectValue, ActionRuntime
+  FieldPickerWidget, ActionWidget, Operation
 } from '../types';
 import { getAtPointer, setAtPointer, encodePointerSegment, joinPointer } from '../core/pointer';
 import { resolveBindingPath } from '../core/binding';
@@ -12,14 +12,16 @@ import { ChipSelect } from './ChipSelect';
 
 type NormalizedOption = { value: string; label: string };
 
-const noopRuntime: ActionRuntime = {
+const noopRuntime = {
   enqueueSteps: () => {},
   getState: () => undefined,
   setState: () => {},
   completeStep: () => {},
 };
 
-function normalizeSelectValues(values?: SelectValue[]): NormalizedOption[] {
+function normalizeSelectValues(
+  values?: (string | { value: string; label?: string })[] 
+): NormalizedOption[]{
   if (!values) return [];
   const out: NormalizedOption[] = [];
   for (const raw of values) {
