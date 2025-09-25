@@ -1,5 +1,5 @@
 import type { ConversationsAdapter } from '../engine/ConversationEngine';
-import type { CommittedStep } from '..';
+import type { CommittedStep, TemplateRef } from '..';
 
 
 export class FastApiAdapter implements ConversationsAdapter {
@@ -31,7 +31,7 @@ export class FastApiAdapter implements ConversationsAdapter {
   }
 
   async load(id: string) {
-    return this.api<{ id: string; title: string; initial: any; steps: CommittedStep[] }>(`/conversations/${id}`);
+    return this.api<{ id: string; title: string; initial: any; steps: CommittedStep[]; pendingSteps: TemplateRef[]; sessionState: Record<string, any> }>(`/conversations/${id}`);
   }
 
   async rename(id: string, title: string) {
@@ -50,5 +50,12 @@ export class FastApiAdapter implements ConversationsAdapter {
 
   async undo(id: string) {
     await this.api<{ ok: boolean }>(`/conversations/${id}/undo`, { method: 'POST' });
+  }
+
+  async saveState(id: string, state: { pendingSteps: TemplateRef[]; sessionState: Record<string, any> }) {
+    await this.api<{ ok: boolean }>(`/conversations/${id}/state`, {
+      method: 'PATCH',
+      body: JSON.stringify(state),
+    });
   }
 }

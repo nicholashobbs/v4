@@ -30,29 +30,57 @@ export default function ClientConvo4({
   initialDoc: any;
   steps: LoadedStep[];
 }): JSX.Element {
-  // force re-render hook
-  const [, bump] = useState(0);
-  const force = () => bump(x => x + 1);
+  // UI refresh hooks
+  const [, setRenderTick] = useState(0);
+  const [storeVersion, setStoreVersion] = useState(0);
+  const force = (opts?: { refreshStore?: boolean }) => {
+    setRenderTick(x => x + 1);
+    if (opts?.refreshStore) setStoreVersion(v => v + 1);
+  };
 
   // persistence list
   const [list, setList] = useState<{ id: string; title: string }[]>([]);
   const [title, setTitle] = useState(initialTitle);
+  const [draftTitle, setDraftTitle] = useState(initialTitle);
+  const [currentId, setCurrentId] = useState<string>(''); // NEW: track active UUID for Load menu
+
+  const resumeSectionSteps = useMemo(() => getResumeSectionSteps(), []);
+  const stepCatalog = useMemo<Record<string, LoadedStep>>(() => {
+    const catalog: Record<string, LoadedStep> = {};
+    for (const step of steps) {
+      catalog[step.templatePath] = step;
+    }
+    for (const step of Object.values(resumeSectionSteps)) {
+      catalog[step.templatePath] = step;
+    }
+    return catalog;
+  }, [steps, resumeSectionSteps]);
 
   // instantiate engine once for these props
   const engine = useMemo(() => {
-    const adapter = new FastApiAdapter({ baseUrl: BASE });
+    const adapter = new FastApiAdapter({ baseUrl: BASE }); // typed ctor
     return new ConversationEngine({
       initialDoc,
       steps,
       adapter,
+      catalog: stepCatalog,
       onCommitted: async () => {
         // refresh list after each commit
-        try { setList(await adapter.list().then(items => items.map(i => ({ id: i.id, title: i.title })))); } catch {}
+        try {
+          const items = await adapter.list();
+          setList(items.map(i => ({ id: i.id, title: i.title })));
+        } catch {}
         force();
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialDoc, steps]);
+  }, [initialDoc, steps, stepCatalog]);
+
+  // keep currentId synced with engine's active conversation (including lazy creation on first save)
+  useEffect(() => {
+    setCurrentId(engine.conversationId ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine.committed.length]);
 
   // preload list
   useEffect(() => {
@@ -69,7 +97,6 @@ export default function ClientConvo4({
     if (el) el.scrollTop = el.scrollHeight;
   }, [engine.committed.length]); // reading getter triggers re-run after force()
 
-  const resumeSectionSteps = useMemo(() => getResumeSectionSteps(), []);
   const hubStep = useMemo(() => (steps.length > 0 ? steps[steps.length - 1] : null), [steps]);
 
   const contactActions = useMemo<ActionRegistry>(() => {
@@ -168,23 +195,37 @@ export default function ClientConvo4({
     await engine.newConversation(crypto.randomUUID());
     try { setList(await engine.listConversations()); } catch {}
     setTitle(initialTitle);
-    force();
+    setDraftTitle(initialTitle);
+    setCurrentId(engine.conversationId ?? ''); // NEW: keep Load select in sync
+    force({ refreshStore: true });
   }
   async function onLoad(id: string) {
     if (!id) return;
-    await engine.loadConversation(id);
+    const loaded = await engine.loadConversation(id);
     // engine.load sets title server-side; we fetch list after load
     try { setList(await engine.listConversations()); } catch {}
-    force();
+    if (loaded) {
+      setTitle(loaded.title);
+      setDraftTitle(loaded.title);
+      setCurrentId(loaded.id);
+    } else {
+      setCurrentId('');
+    }
+    force({ refreshStore: true });
   }
-  async function onRename(newTitle: string) {
-    setTitle(newTitle);
-    await engine.renameConversation(newTitle);
+  async function onRenameSubmit() {
+    const trimmed = draftTitle.trim();
+    if (!trimmed) return;
+    await engine.renameConversation(trimmed);
+    setTitle(trimmed);
+    setDraftTitle(trimmed);
+    setCurrentId(engine.conversationId ?? '');
     try { setList(await engine.listConversations()); } catch {}
   }
   async function onUndoLast() {
     await engine.undoLast();
-    force();
+    setCurrentId(engine.conversationId ?? ''); // NEW
+    force({ refreshStore: true });
   }
 
   // UI flags exactly as before
@@ -234,6 +275,7 @@ export default function ClientConvo4({
           ) : (
             <div className="max-h-[45dvh] overflow-y-auto pr-1">
               <Flux4Bots
+                key={storeVersion}
                 template={curStep.template}
                 store={engine.store as any}
                 mode={curStep.mode}
@@ -256,12 +298,14 @@ export default function ClientConvo4({
 
           <select
             className="px-2 py-2 border border-slate-300 rounded-lg text-sm"
-            defaultValue=""
+            value={currentId}                            
             onChange={e => onLoad(e.target.value)}
           >
             <option value="" disabled>Load…</option>
             {list.map(item => (
-              <option key={item.id} value={item.id}>{item.title}</option>
+              <option key={item.id} value={item.id}>
+                {item.title} • {item.id}                
+              </option>
             ))}
           </select>
 
@@ -269,9 +313,19 @@ export default function ClientConvo4({
             <span className="text-[12px] text-slate-500">Rename:</span>
             <input
               className="px-2 py-2 border border-slate-300 rounded-lg text-sm min-w-[220px]"
-              value={title}
-              onChange={e => onRename(e.target.value)}
+              value={draftTitle}
+              onChange={e => setDraftTitle(e.target.value)}
             />
+            <button
+              className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+              type="button"
+              onClick={onRenameSubmit}
+              disabled={!currentId}
+            >
+              Save name
+            </button>
+            <span className="text-[12px] text-slate-500">Saved: {title}</span>
+            <span className="text-[12px] text-slate-400">ID: {currentId || '—'}</span>
           </div>
         </div>
 

@@ -22,6 +22,14 @@ class StepModel(BaseModel):
     ops: List[OpModel]
     at: datetime = Field(default_factory=datetime.utcnow)
 
+class TemplateRefModel(BaseModel):
+    templatePath: str
+    mode: Literal['diff','explicit']
+
+class ConversationStateModel(BaseModel):
+    pendingSteps: List[TemplateRefModel] = Field(default_factory=list)
+    sessionState: Dict[str, Any] = Field(default_factory=dict)
+
 class ConversationCreate(BaseModel):
     title: Optional[str] = None
     initial: dict = Field(default_factory=dict)
@@ -138,6 +146,8 @@ def create_conversation(payload: ConversationCreate):
         "title": payload.title or str(ObjectId()),
         "initial": payload.initial,
         "steps": [],
+        "pending_steps": [],
+        "session_state": {},
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
     }
@@ -158,8 +168,15 @@ def get_conversation(cid: str):
     c = conversations().find_one({"_id": ObjectId(cid)})
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
-    c["id"] = str(c["_id"]); c.pop("_id", None)
-    return c
+    c_out = {
+        "id": str(c["_id"]),
+        "title": c.get("title"),
+        "initial": c.get("initial"),
+        "steps": c.get("steps", []),
+        "pendingSteps": c.get("pending_steps", []),
+        "sessionState": c.get("session_state", {}),
+    }
+    return c_out
 
 @app.patch("/conversations/{cid}/title")
 def rename_conversation(cid: str, payload: ConversationUpdateTitle):
@@ -191,6 +208,18 @@ def undo_last(cid: str):
 def reset_steps(cid: str):
     res = conversations().update_one({"_id": ObjectId(cid)},
                                      {"$set": {"steps": [], "updated_at": datetime.utcnow()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
+
+@app.patch("/conversations/{cid}/state")
+def update_state(cid: str, payload: ConversationStateModel):
+    update = {
+        "pending_steps": [ref.model_dump() for ref in payload.pendingSteps],
+        "session_state": payload.sessionState,
+        "updated_at": datetime.utcnow(),
+    }
+    res = conversations().update_one({"_id": ObjectId(cid)}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Not found")
     return {"ok": True}
