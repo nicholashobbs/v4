@@ -7,17 +7,13 @@ widgets:
     options:
       variant: chips
       multiple: true
+      autoAction: "resume.init-sections"
       values:
         - { value: "experience", label: "Experience" }
         - { value: "education", label: "Education" }
         - { value: "skills", label: "Skills" }
         - { value: "summary", label: "Summary" }
 
-  - id: go
-    type: action
-    label: "Prepare sections"
-    options: { action: "resume.init-sections" }
-
 layout:
   type: vertical
-  children: [resumeSections, go]
+  children: [resumeSections]

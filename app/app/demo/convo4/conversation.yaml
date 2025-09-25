@@ -6,16 +6,16 @@ initial:
 
 steps:
   - template: "./step1-name.yaml"
-    mode: "explicit"
+    mode: "diff"
 
   - template: "./step2-choose-fields.yaml"
-    mode: "explicit"
+    mode: "diff"
 
   - template: "./step3-fill-chosen.yaml"
     mode: "diff"   # <-- change this from "explicit" to "diff"
 
   - template: "./step4-create-sections.yaml"
-    mode: "explicit"
+    mode: "diff"
 
   - template: "./step5-section-hub.yaml"
-    mode: "explicit"
+    mode: "diff"

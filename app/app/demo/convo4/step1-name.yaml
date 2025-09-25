@@ -4,10 +4,7 @@ widgets:
   - id: name
     type: text
     label: "Name"
-  - id: go
-    type: action
-    label: "Save name"
-    options: { action: "set-contact-name" }
+    binding: { path: "/contact/name" }
 layout:
   type: vertical
-  children: [name, go]
+  children: [name]

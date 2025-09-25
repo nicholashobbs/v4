@@ -7,6 +7,7 @@ widgets:
     options:
       variant: chips
       multiple: true
+      autoAction: "create-contact-fields"
       values:
         - { value: "phone", label: "Phone" }
         - { value: "email", label: "Email" }
@@ -17,12 +18,8 @@ widgets:
   - id: customContactField
     type: text
     label: "Custom field label"
-
-  - id: go
-    type: action
-    label: "Create selected fields"
-    options: { action: "create-contact-fields" }
+    options: { autoAction: "create-contact-fields" }
 
 layout:
   type: vertical
-  children: [contactFields, customContactField, go]
+  children: [contactFields, customContactField]

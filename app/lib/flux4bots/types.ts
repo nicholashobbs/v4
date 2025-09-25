@@ -2,7 +2,10 @@ export type Pointer = string;
 
 export type Binding = { path: Pointer }; // may include ${/pointer} segments
 
-export type TextOptions = { readOnly?: boolean };
+export type TextOptions = {
+  readOnly?: boolean;
+  autoAction?: string;
+};
 
 // Values for selects can be simple strings or labeled objects
 export type SelectValue = string | { value: string; label?: string };
@@ -10,6 +13,7 @@ export type SelectOptions = {
   values?: SelectValue[];                 // explicit list
   variant?: 'chips' | 'dropdown';         // UI variant used by Flux4Bots
   multiple?: boolean;                     // allow multi-select (esp. for chips)
+  autoAction?: string;                    // optional action to fire on change
 };
 
 // NEW: list items sourced from object keys
@@ -58,11 +62,17 @@ export type ActionWidget = {
 
 export type Widget = TextWidget | SelectWidget | ListWidget | FieldPickerWidget | ActionWidget;
 
+export type TemplateMeta = {
+  commitAction?: string;
+  commitRequiresVar?: string | string[];
+};
+
 export type Template = {
   version: 1;
   name: string;
   widgets: Widget[];
   layout: { type: 'vertical'; children: string[] };
+  meta?: TemplateMeta;
 };
 
 // ---- Steps, templates & modes ----

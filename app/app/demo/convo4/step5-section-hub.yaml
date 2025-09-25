@@ -6,11 +6,10 @@ widgets:
     label: "Choose a section to work on"
     options: { basePath: "/resume", selection: "single" }
 
-  - id: go
-    type: action
-    label: "Go to section"
-    options: { action: "resume.choose-section" }
-
 layout:
   type: vertical
-  children: [sectionPicker, go]
+  children: [sectionPicker]
+
+meta:
+  commitAction: "resume.choose-section"
+  commitRequiresVar: sectionPicker

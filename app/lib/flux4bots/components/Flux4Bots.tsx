@@ -46,18 +46,17 @@ function normalizeSelectValues(
 }
 
 export function Flux4Bots(props: Flux4BotsProps) {
-  const { template, store, mode = 'diff', actions = {}, ui, runtime: runtimeProp } = props;
+  const { template, store, mode = 'diff', actions = {}, runtime: runtimeProp } = props;
   const runtime = runtimeProp ?? noopRuntime;
 
   // collect template warnings once per template
   const templateWarnings = useMemo(() => validateTemplate(template), [template]);
 
-  const uiCfg = { showPatchPreview: true, showApplyButton: true, showCurrentJson: true, ...(ui || {}) };
-
   const [original, setOriginal] = useState<any | null>(null);
   const [working, setWorking] = useState<any | null>(null);
   const [explicitOps, setExplicitOps] = useState<Operation[]>([]);
   const [vars, setVars] = useState<Record<string, any>>({}); // captures unbound widget values
+  const [showJsonDev, setShowJsonDev] = useState(false);
 
   // Load doc
   useEffect(() => {
@@ -78,11 +77,56 @@ export function Flux4Bots(props: Flux4BotsProps) {
     return mode === 'diff' ? compareDocsToPatch(original, working) : explicitOps;
   }, [original, working, explicitOps, mode]);
 
-  async function onApply() {
-    if (!patch.length) return;
-    const updated = await store.applyPatch(patch);
-    setOriginal(updated);
-    setWorking(JSON.parse(JSON.stringify(updated)));
+  const commitMeta = template.meta ?? {};
+  const commitActionName = commitMeta.commitAction;
+  const commitRequires = commitActionName
+    ? Array.isArray(commitMeta.commitRequiresVar)
+      ? commitMeta.commitRequiresVar
+      : commitMeta.commitRequiresVar
+        ? [commitMeta.commitRequiresVar]
+        : []
+    : [];
+
+  const hasChanges = patch.length > 0;
+
+  const commitReady = commitActionName
+    ? (commitRequires.length === 0
+        ? true
+        : commitRequires.every((id) => {
+            const val = vars[id];
+            if (Array.isArray(val)) return val.length > 0;
+            if (typeof val === 'string') return val.trim().length > 0;
+            return Boolean(val);
+          }))
+    : false;
+
+  const canCommit = commitActionName
+    ? (hasChanges ? true : commitReady)
+    : hasChanges;
+
+  async function onCommit() {
+    if (!working || !canCommit) return;
+
+    let nextDoc = JSON.parse(JSON.stringify(working));
+    if (patch.length > 0) {
+      const updated = await store.applyPatch(patch);
+      nextDoc = JSON.parse(JSON.stringify(updated));
+    }
+
+    let finalDoc = nextDoc;
+    if (commitActionName) {
+      const result = applyAction(commitActionName, {
+        doc: finalDoc,
+        working: finalDoc,
+        varsOverride: vars,
+      });
+      if (result) {
+        finalDoc = JSON.parse(JSON.stringify(result));
+      }
+    }
+
+    setOriginal(JSON.parse(JSON.stringify(finalDoc)));
+    setWorking(JSON.parse(JSON.stringify(finalDoc)));
     setExplicitOps([]);
   }
 
@@ -90,11 +134,44 @@ export function Flux4Bots(props: Flux4BotsProps) {
     setVars(prev => ({ ...prev, [id]: value }));
   }
 
+  function applyAction(
+    name: string | undefined,
+    opts?: { doc?: any; working?: any; varsOverride?: Record<string, any>; force?: boolean },
+  ) {
+    if (!name) return opts?.working ?? working ?? null;
+    const handler = actions?.[name];
+    if (!handler) return opts?.working ?? working ?? null;
+    const currentWorking = opts?.working ?? working;
+    const currentDoc = opts?.doc ?? currentWorking ?? original;
+    if (!currentWorking || !currentDoc) return currentWorking ?? null;
+    const ctxVars = opts?.varsOverride ?? vars;
+
+    const ops = handler({
+      doc: currentDoc,
+      working: currentWorking,
+      vars: ctxVars,
+      helpers: { encode: encodePointerSegment, get: getAtPointer },
+      runtime,
+    }) ?? [];
+
+    if (mode === 'explicit') {
+      setExplicitOps(ops);
+    }
+
+    const nextWorking = ops.length > 0 ? applyPatch(currentWorking, ops) : currentWorking;
+    if (ops.length > 0 || opts?.force) {
+      setWorking(nextWorking);
+    }
+
+    return nextWorking;
+  }
+
   /* ------------------- renderers ------------------- */
 
   function renderText(w: TextWidget) {
     const boundPath = working ? resolveBindingPath(w.binding, working) : null;
     const value = boundPath && working ? getAtPointer(working, boundPath) : (vars[w.id] ?? '');
+    const autoAction = w.options?.autoAction;
 
     if (w.options?.readOnly && boundPath) {
       return (
@@ -111,12 +188,21 @@ export function Flux4Bots(props: Flux4BotsProps) {
         <input
           value={String(value ?? '')}
           onChange={e => {
+            const nextValue = e.target.value;
             if (boundPath && working) {
-              const next = JSON.parse(JSON.stringify(working));
-              setAtPointer(next, boundPath, e.target.value);
-              setWorking(next);
+              const nextDoc = JSON.parse(JSON.stringify(working));
+              setAtPointer(nextDoc, boundPath, nextValue);
+              setWorking(nextDoc);
+              if (autoAction) {
+                applyAction(autoAction, { doc: nextDoc, working: nextDoc, varsOverride: vars });
+              }
             } else {
-              setVar(w.id, e.target.value);
+              const nextVars = { ...vars, [w.id]: nextValue };
+              setVars(nextVars);
+              if (autoAction && (working || original)) {
+                const docForAction = working ?? original;
+                applyAction(autoAction, { doc: docForAction, working: docForAction, varsOverride: nextVars });
+              }
             }
           }}
           style={{ padding: 8, width: 360 }}
@@ -140,14 +226,28 @@ export function Flux4Bots(props: Flux4BotsProps) {
     const options = normalizeSelectValues(w.options?.values);
     const boundPath = working ? resolveBindingPath(w.binding, working) : null;
     const rawValue = boundPath && working ? getAtPointer(working, boundPath) : vars[w.id];
+    const autoAction = w.options?.autoAction;
+
+    const runAuto = (nextVars: Record<string, any>) => {
+      if (!autoAction) return;
+      const docForAction = working ?? original;
+      if (!docForAction) return;
+      applyAction(autoAction, { doc: docForAction, working: docForAction, varsOverride: nextVars });
+    };
 
     const writeValue = (nextValue: any) => {
       if (boundPath && working) {
-        const next = JSON.parse(JSON.stringify(working));
-        setAtPointer(next, boundPath, nextValue);
-        setWorking(next);
+        const nextDoc = JSON.parse(JSON.stringify(working));
+        setAtPointer(nextDoc, boundPath, nextValue);
+        setWorking(nextDoc);
+        if (autoAction) {
+          applyAction(autoAction, { doc: nextDoc, working: nextDoc, varsOverride: vars });
+        }
       } else {
-        setVar(w.id, nextValue);
+        const normalized = allowMultiple ? nextValue : (nextValue ?? '');
+        const nextVars = { ...vars, [w.id]: normalized };
+        setVars(nextVars);
+        runAuto(nextVars);
       }
     };
 
@@ -506,20 +606,8 @@ export function Flux4Bots(props: Flux4BotsProps) {
       <div style={{ marginBottom: 12 }}>
         <button
           onClick={() => {
-            const handler = name ? actions?.[name] : undefined;
-            if (!original || !name || !handler) return;
-            const ops = handler({
-              doc: original,
-              working,
-              vars,
-              helpers: { encode: encodePointerSegment, get: getAtPointer },
-              runtime,
-            });
-            setExplicitOps(ops);
-            if (original) {
-              const preview = applyPatch(original, ops);
-              setWorking(preview);
-            }
+            if (!name) return;
+            applyAction(name, { doc: original, working, varsOverride: vars, force: true });
           }}
           style={{ padding: '8px 12px' }}
           disabled={!name || !actions[name]}
@@ -576,7 +664,52 @@ export function Flux4Bots(props: Flux4BotsProps) {
               marginBottom: 16,
             }}
           >
-            <h3 style={{ marginTop: 0 }}>{template.name}</h3>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                marginBottom: 12,
+              }}
+            >
+              <h3 style={{ margin: 0 }}>{template.name}</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowJsonDev(prev => !prev)}
+                  style={{
+                    padding: '6px 10px',
+                    border: palette.border,
+                    borderRadius: 6,
+                    background: showJsonDev ? 'var(--f4b-surface-soft)' : 'transparent',
+                    color: 'var(--f4b-text-secondary)',
+                    fontSize: 12,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  json
+                </button>
+                <button
+                  type="button"
+                  onClick={onCommit}
+                  disabled={!canCommit}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: 6,
+                    border: 'none',
+                    background: canCommit ? 'var(--f4b-accent)' : 'var(--f4b-border-muted)',
+                    color: canCommit ? '#0f1422' : 'var(--f4b-text-muted)',
+                    fontWeight: 600,
+                    fontSize: 14,
+                    cursor: canCommit ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  ↑
+                </button>
+              </div>
+            </div>
             {template.layout.type !== 'vertical'
               ? <div style={{ color: palette.warning }}>Unsupported layout</div>
               : template.layout.children.map(cid => {
@@ -587,58 +720,53 @@ export function Flux4Bots(props: Flux4BotsProps) {
             }
           </section>
 
-          {(uiCfg.showPatchPreview || uiCfg.showCurrentJson) && (
-            <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              {uiCfg.showPatchPreview && (
-                <div>
-                  <h4 style={{ margin: '8px 0' }}>Patch Preview ({mode})</h4>
-
-                  {/* Scrollable preview container */}
-                  <div style={{ maxHeight: 300, overflow: 'auto', position: 'relative', paddingBottom: 8 }}>
-                    <pre style={{ background: palette.codeBg, padding: 12, borderRadius: 8 }}>
-                      {JSON.stringify(patch, null, 2)}
-                    </pre>
-
-                    {/* Sticky apply footer inside this scroll container */}
-                    {uiCfg.showApplyButton && (
-                      <div
-                        style={{
-                          position: 'sticky',
-                          bottom: 0,
-                          background: 'color-mix(in srgb, var(--f4b-surface) 88%, transparent)',
-                          backdropFilter: 'saturate(180%) blur(6px)',
-                          paddingTop: 8,
-                          paddingBottom: 8,
-                        }}
-                      >
-                        <button
-                          onClick={onApply}
-                          disabled={patch.length === 0}
-                          style={{
-                            padding: '8px 12px',
-                            background: 'var(--f4b-accent)',
-                            color: '#0f1422',
-                            border: 'none',
-                            fontWeight: 600,
-                          }}
-                        >
-                          Apply Patch
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {uiCfg.showCurrentJson && (
-                <div>
-                  <h4 style={{ margin: '8px 0' }}>Current JSON</h4>
-                  <pre style={{ background: palette.codeBg, padding: 12, borderRadius: 8, maxHeight: 300, overflow: 'auto' }}>
-                    {JSON.stringify(working, null, 2)}
-                  </pre>
-                </div>
-              )}
-            </section>
+          {showJsonDev && working && (
+            <div
+              style={{
+                position: 'fixed',
+                bottom: 24,
+                right: 24,
+                width: 340,
+                maxHeight: '45vh',
+                border: palette.border,
+                background: 'color-mix(in srgb, var(--f4b-surface) 92%, transparent)',
+                borderRadius: 8,
+                boxShadow: '0 12px 24px rgba(15, 20, 34, 0.25)',
+                overflow: 'hidden',
+                zIndex: 20,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 12px',
+                  borderBottom: palette.borderMuted,
+                  background: 'var(--f4b-surface)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                }}
+              >
+                Pending Patch
+                <span style={{ fontWeight: 400, opacity: 0.7 }}>{mode}</span>
+              </div>
+              <pre
+                style={{
+                  margin: 0,
+                  padding: 12,
+                  background: palette.codeBg,
+                  color: 'var(--f4b-text-secondary)',
+                  maxHeight: 'calc(45vh - 44px)',
+                  overflow: 'auto',
+                  fontSize: 12,
+                }}
+              >
+                {JSON.stringify(patch, null, 2)}
+              </pre>
+            </div>
           )}
         </>
       )}
