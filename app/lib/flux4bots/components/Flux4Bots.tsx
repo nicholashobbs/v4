@@ -19,6 +19,17 @@ const noopRuntime = {
   completeStep: () => {},
 };
 
+const palette = {
+  border: '1px solid var(--f4b-border)',
+  borderMuted: '1px solid var(--f4b-border-muted)',
+  surfaceSoft: 'var(--f4b-surface-soft)',
+  surfaceMuted: 'var(--f4b-surface-muted)',
+  warning: 'var(--f4b-warning)',
+  warningBorder: '1px solid color-mix(in srgb, var(--f4b-warning) 45%, transparent)',
+  warningBg: 'color-mix(in srgb, var(--f4b-warning) 18%, transparent)',
+  codeBg: 'var(--f4b-code-bg)',
+};
+
 function normalizeSelectValues(
   values?: (string | { value: string; label?: string })[] 
 ): NormalizedOption[]{
@@ -112,7 +123,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
           disabled={!!w.options?.readOnly && !boundPath}
         />
         {w.binding && !boundPath && (
-          <div style={{ fontSize: 12, color: '#b3261e', marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: palette.warning, marginTop: 4 }}>
             Binding path could not resolve at runtime.
           </div>
         )}
@@ -160,7 +171,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
           {w.label ? <div style={{ fontWeight: 600, marginBottom: 6 }}>{w.label}</div> : null}
           <ChipSelect options={options} selected={selected} multiple={allowMultiple} onChange={handleChange} />
           {w.binding && !boundPath && (
-            <div style={{ fontSize: 12, color: '#b3261e', marginTop: 4 }}>
+            <div style={{ fontSize: 12, color: palette.warning, marginTop: 4 }}>
               Binding path could not resolve at runtime.
             </div>
           )}
@@ -185,7 +196,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
           {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
         </select>
         {w.binding && !boundPath && (
-          <div style={{ fontSize: 12, color: '#b3261e', marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: palette.warning, marginTop: 4 }}>
             Binding path could not resolve at runtime.
           </div>
         )}
@@ -205,7 +216,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
     // ---- Case 1: existing behavior (array-driven via binding) ----
     if (anyW.binding) {
       const arrPath = resolveBindingPath(anyW.binding, working);
-      if (!arrPath) return <div style={{ color: 'crimson' }}>List binding missing</div>;
+      if (!arrPath) return <div style={{ color: palette.warning }}>List binding missing</div>;
 
       const arr = getAtPointer(working, arrPath);
       const items = Array.isArray(arr) ? arr : [];
@@ -219,7 +230,16 @@ export function Flux4Bots(props: Flux4BotsProps) {
           {items.map((_it: any, idx: number) => {
             const base = `${arrPath}/${idx}`;
             return (
-              <div key={base} style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+              <div
+                key={base}
+                style={{
+                  border: palette.borderMuted,
+                  background: palette.surfaceSoft,
+                  borderRadius: 8,
+                  padding: 10,
+                  marginBottom: 8,
+                }}
+              >
                 {!expandable ? null : (
                   <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 6 }}>
                     base: {base}
@@ -280,7 +300,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
                       </div>
                     );
                   }
-                  return <div key={fieldPath} style={{ color: 'crimson' }}>Unsupported item field</div>;
+                  return <div key={fieldPath} style={{ color: palette.warning }}>Unsupported item field</div>;
                 })}
               </div>
             );
@@ -306,7 +326,16 @@ export function Flux4Bots(props: Flux4BotsProps) {
           {showKeys.map((k) => {
             const base = `${basePath}/${encodePointerSegment(k)}`;
             return (
-              <div key={base} style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+              <div
+                key={base}
+                style={{
+                  border: palette.borderMuted,
+                  background: palette.surfaceSoft,
+                  borderRadius: 8,
+                  padding: 10,
+                  marginBottom: 8,
+                }}
+              >
                 {!expandable ? null : (
                   <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 6 }}>
                     key: {k} • base: {base}
@@ -367,7 +396,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
                       </div>
                     );
                   }
-                  return <div key={fieldPath} style={{ color: 'crimson' }}>Unsupported item field</div>;
+                  return <div key={fieldPath} style={{ color: palette.warning }}>Unsupported item field</div>;
                 })}
               </div>
             );
@@ -377,7 +406,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
     }
 
     // Fallback (shouldn't happen if schema is correct)
-    return <div style={{ color: 'crimson' }}>List misconfigured</div>;
+    return <div style={{ color: palette.warning }}>List misconfigured</div>;
   }
 
   function renderFieldPicker(w: FieldPickerWidget) {
@@ -494,7 +523,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
     if (w.type === 'list') return <div>{renderList(w)}</div>;
     if (w.type === 'field-picker') return <div>{renderFieldPicker(w)}</div>;
     if (w.type === 'action') return <div>{renderAction(w)}</div>;
-    return <div style={{ color: 'crimson' }}>Unsupported widget</div>;
+    return <div style={{ color: palette.warning }}>Unsupported widget</div>;
   }
 
   const canRender = Boolean(template && original && working);
@@ -506,22 +535,38 @@ export function Flux4Bots(props: Flux4BotsProps) {
       ) : (
         <>
           {templateWarnings.length > 0 && (
-            <div style={{ marginBottom: 12, padding: 10, border: '1px solid #f0c2bf', background: '#fff5f4', borderRadius: 8 }}>
-              <div style={{ fontWeight: 600, color: '#b3261e', marginBottom: 6 }}>Template Warnings</div>
+          <div
+            style={{
+              marginBottom: 12,
+              padding: 10,
+              border: palette.warningBorder,
+              background: palette.warningBg,
+              borderRadius: 8,
+            }}
+          >
+          <div style={{ fontWeight: 600, color: palette.warning, marginBottom: 6 }}>Template Warnings</div>
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {templateWarnings.map((msg, i) => <li key={i} style={{ marginBottom: 4 }}>{msg}</li>)}
               </ul>
             </div>
           )}
 
-          <section style={{ padding: 12, border: '1px solid #ddd', borderRadius: 8, marginBottom: 16 }}>
+          <section
+            style={{
+              padding: 12,
+              border: palette.border,
+              background: palette.surfaceMuted,
+              borderRadius: 8,
+              marginBottom: 16,
+            }}
+          >
             <h3 style={{ marginTop: 0 }}>{template.name}</h3>
             {template.layout.type !== 'vertical'
-              ? <div style={{ color: 'crimson' }}>Unsupported layout</div>
+              ? <div style={{ color: palette.warning }}>Unsupported layout</div>
               : template.layout.children.map(cid => {
                   const w = template.widgets.find(x => x.id === cid);
                   return w ? <React.Fragment key={cid}>{renderWidget(w)}</React.Fragment>
-                           : <div key={cid} style={{ color: 'crimson' }}>Missing widget: {cid}</div>;
+                           : <div key={cid} style={{ color: palette.warning }}>Missing widget: {cid}</div>;
                 })
             }
           </section>
@@ -534,7 +579,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
 
                   {/* Scrollable preview container */}
                   <div style={{ maxHeight: 300, overflow: 'auto', position: 'relative', paddingBottom: 8 }}>
-                    <pre style={{ background: '#f7f7f7', padding: 12, borderRadius: 8 }}>
+                    <pre style={{ background: palette.codeBg, padding: 12, borderRadius: 8 }}>
                       {JSON.stringify(patch, null, 2)}
                     </pre>
 
@@ -544,13 +589,23 @@ export function Flux4Bots(props: Flux4BotsProps) {
                         style={{
                           position: 'sticky',
                           bottom: 0,
-                          background: 'rgba(255,255,255,0.9)',
+                          background: 'color-mix(in srgb, var(--f4b-surface) 88%, transparent)',
                           backdropFilter: 'saturate(180%) blur(6px)',
                           paddingTop: 8,
                           paddingBottom: 8,
                         }}
                       >
-                        <button onClick={onApply} disabled={patch.length === 0} style={{ padding: '8px 12px' }}>
+                        <button
+                          onClick={onApply}
+                          disabled={patch.length === 0}
+                          style={{
+                            padding: '8px 12px',
+                            background: 'var(--f4b-accent)',
+                            color: '#0f1422',
+                            border: 'none',
+                            fontWeight: 600,
+                          }}
+                        >
                           Apply Patch
                         </button>
                       </div>
@@ -562,7 +617,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
               {uiCfg.showCurrentJson && (
                 <div>
                   <h4 style={{ margin: '8px 0' }}>Current JSON</h4>
-                  <pre style={{ background: '#f7f7f7', padding: 12, borderRadius: 8, maxHeight: 300, overflow: 'auto' }}>
+                  <pre style={{ background: palette.codeBg, padding: 12, borderRadius: 8, maxHeight: 300, overflow: 'auto' }}>
                     {JSON.stringify(working, null, 2)}
                   </pre>
                 </div>

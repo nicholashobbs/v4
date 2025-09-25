@@ -26,9 +26,9 @@ export function ChipSelect({ options, selected, onChange, multiple = true }: Chi
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
       {options.map(opt => {
         const isSelected = selected.includes(opt.value);
-        const background = isSelected ? '#0f172a' : '#f8fafc';
-        const color = isSelected ? '#f8fafc' : '#0f172a';
-        const border = isSelected ? '#0f172a' : '#cbd5f5';
+        const background = isSelected ? 'var(--f4b-accent)' : 'var(--f4b-surface-soft)';
+        const color = isSelected ? '#0f1422' : 'var(--f4b-text-secondary)';
+        const border = isSelected ? 'var(--f4b-accent)' : 'var(--f4b-border)';
         return (
           <button
             key={opt.value}
@@ -44,7 +44,14 @@ export function ChipSelect({ options, selected, onChange, multiple = true }: Chi
               padding: '6px 14px',
               fontSize: 13,
               fontWeight: 600,
-              transition: 'background 0.15s ease, color 0.15s ease',
+              transition: 'background 0.15s ease, color 0.15s ease, transform 0.15s ease',
+              boxShadow: isSelected ? '0 0 0 2px color-mix(in srgb, var(--f4b-accent) 45%, transparent)' : 'none',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.transform = 'translateY(0)';
             }}
           >
             {opt.label}

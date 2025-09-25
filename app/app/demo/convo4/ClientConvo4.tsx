@@ -238,26 +238,26 @@ export default function ClientConvo4({
   const curStep = engine.currentStep;
 
   return (
-    <main className="h-[100dvh] overflow-hidden grid grid-cols-2">
+    <main className="h-[100dvh] overflow-hidden grid grid-cols-2 bg-[var(--f4b-bg)] text-[var(--f4b-text-primary)]">
       {/* Left: chat column */}
-      <div className="border-r border-slate-200 flex flex-col min-h-0">
+      <div className="border-r border-[var(--f4b-border)] flex flex-col min-h-0 bg-[var(--f4b-surface-muted)]">
         {/* History */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-4">
           {engine.committed.length === 0 && (
-            <div className="text-slate-500 mt-2">Start with your name, then choose fields.</div>
+            <div className="text-[var(--f4b-text-muted)] mt-2">Start with your name, then choose fields.</div>
           )}
           {engine.committed.map((st, i) => {
             const opLines = summarizeOps(st.ops);
             return (
               <div key={i} className="space-y-2">
-                <div className="inline-block max-w-[85%] rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2">
-                  <div className="text-[12px] text-slate-500 mb-1">
+                <div className="inline-block max-w-[85%] rounded-xl border border-[var(--f4b-border)] bg-[var(--f4b-surface)] px-3 py-2">
+                  <div className="text-[12px] text-[var(--f4b-text-muted)] mb-1">
                     {st.mode} • {new Date(st.at).toLocaleTimeString()}
                   </div>
                   {opLines.map((l, idx) => <div key={idx}>{l}</div>)}
                   {i === engine.committed.length - 1 && (
                     <div className="mt-2">
-                      <button className="text-[12px] text-blue-700 underline" onClick={onUndoLast} type="button">
+                      <button className="text-[12px] text-[var(--f4b-accent)] underline" onClick={onUndoLast} type="button">
                         Undo
                       </button>
                     </div>
@@ -269,9 +269,9 @@ export default function ClientConvo4({
         </div>
 
         {/* Composer (pinned bottom, scrolls internally if tall) */}
-        <div className="border-t border-slate-200 p-3 bg-white shrink-0 pb-[env(safe-area-inset-bottom)]">
+        <div className="border-t border-[var(--f4b-border)] p-3 bg-[var(--f4b-surface)] shrink-0 pb-[env(safe-area-inset-bottom)]">
           {!curStep ? (
-            <div className="text-slate-600">Flow complete.</div>
+            <div className="text-[var(--f4b-text-secondary)]">Flow complete.</div>
           ) : (
             <div className="max-h-[45dvh] overflow-y-auto pr-1">
               <Flux4Bots
@@ -285,19 +285,25 @@ export default function ClientConvo4({
               />
             </div>
           )}
-          <div className="text-[12px] text-slate-500 mt-2">Click <b>Apply Patch</b> to commit this step.</div>
+          <div className="text-[12px] text-[var(--f4b-text-muted)] mt-2">
+            Click <b>Apply Patch</b> to commit this step.
+          </div>
         </div>
       </div>
 
       {/* Right: JSON + controls */}
-      <div className="flex flex-col min-h-0">
-        <div className="border-b border-slate-200 p-3 flex items-center gap-2">
-          <button onClick={onNew} className="px-3 py-2 rounded-lg bg-slate-900 text-white text-sm" type="button">
+      <div className="flex flex-col min-h-0 bg-[var(--f4b-surface-muted)]">
+        <div className="border-b border-[var(--f4b-border)] p-3 flex items-center gap-2 bg-[var(--f4b-surface)]">
+          <button
+            onClick={onNew}
+            className="px-3 py-2 rounded-lg bg-[var(--f4b-accent)] text-[#0f1422] text-sm font-semibold"
+            type="button"
+          >
             + New
           </button>
 
           <select
-            className="px-2 py-2 border border-slate-300 rounded-lg text-sm"
+            className="px-2 py-2 border border-[var(--f4b-border)] rounded-lg text-sm bg-[var(--f4b-input-bg)] text-[var(--f4b-input-text)]"
             value={currentId}                            
             onChange={e => onLoad(e.target.value)}
           >
@@ -310,27 +316,29 @@ export default function ClientConvo4({
           </select>
 
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-[12px] text-slate-500">Rename:</span>
+            <span className="text-[12px] text-[var(--f4b-text-muted)]">Rename:</span>
             <input
-              className="px-2 py-2 border border-slate-300 rounded-lg text-sm min-w-[220px]"
+              className="px-2 py-2 border border-[var(--f4b-border)] rounded-lg text-sm min-w-[220px] bg-[var(--f4b-input-bg)] text-[var(--f4b-input-text)]"
               value={draftTitle}
               onChange={e => setDraftTitle(e.target.value)}
             />
             <button
-              className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+              className="px-3 py-2 rounded-lg border border-[var(--f4b-border)] text-sm bg-[var(--f4b-surface-soft)]"
               type="button"
               onClick={onRenameSubmit}
               disabled={!currentId}
             >
               Save name
             </button>
-            <span className="text-[12px] text-slate-500">Saved: {title}</span>
-            <span className="text-[12px] text-slate-400">ID: {currentId || '—'}</span>
+            <span className="text-[12px] text-[var(--f4b-text-muted)]">Saved: {title}</span>
+            <span className="text-[12px] text-[var(--f4b-text-muted)] opacity-70">ID: {currentId || '—'}</span>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-3">
-          <pre className="bg-slate-50 rounded-lg p-3 min-h-full">{JSON.stringify(engine.currentDoc, null, 2)}</pre>
+          <pre className="rounded-lg p-3 min-h-full border border-[var(--f4b-border-muted)] bg-[var(--f4b-code-bg)] text-[var(--f4b-text-secondary)]">
+            {JSON.stringify(engine.currentDoc, null, 2)}
+          </pre>
         </div>
       </div>
     </main>
