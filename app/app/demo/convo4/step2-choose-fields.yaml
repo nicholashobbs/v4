@@ -13,12 +13,20 @@ widgets:
         - { value: "email", label: "Email" }
         - { value: "link", label: "Link" }
         - { value: "location", label: "Location" }
-        - { value: "custom", label: "Custom Field" }
 
   - id: customContactField
     type: text
-    label: "Custom field label"
-    options: { autoAction: "create-contact-fields" }
+    label: "Custom fields"
+    options:
+      autoAction: "create-contact-fields"
+      customFieldManager:
+        max: 8
+        addButtonLabel: "+ Add Custom Field"
+        saveButtonLabel: "Save"
+        cancelButtonLabel: "Cancel"
+        placeholder: "Custom field label"
+        emptyLabel: "No custom fields yet."
+        removeButtonLabel: "Remove"
 
 layout:
   type: vertical

@@ -360,7 +360,7 @@ function buildCollectionStep(def: ResumeSectionDefinition): LoadedStep {
       children: ['entries'],
     },
     meta: {
-      autoCommit: true,
+      autoCommit: false,
     },
   };
 

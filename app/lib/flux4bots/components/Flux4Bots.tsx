@@ -10,8 +10,13 @@ import { compareDocsToPatch, applyPatch } from '../core/patch';
 import { validateTemplate } from '../core/validate';
 import { ChipSelect } from './ChipSelect';
 import CollectionCardEditor from './CollectionCardEditor';
+import { sanitizeCustomFieldLabels } from '../utils/customFields';
 
 type NormalizedOption = { value: string; label: string };
+type ApplyActionFn = (
+  name: string | undefined,
+  opts?: { doc?: any; working?: any; varsOverride?: Record<string, any>; force?: boolean },
+) => any;
 
 const noopRuntime = {
   enqueueSteps: () => {},
@@ -70,6 +75,288 @@ function normalizeSelectValues(
     }
   }
   return out;
+}
+
+function arraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+type CustomFieldManagerUIProps = {
+  label?: string;
+  values: string[];
+  max: number;
+  placeholder?: string;
+  addButtonLabel?: string;
+  saveButtonLabel?: string;
+  cancelButtonLabel?: string;
+  emptyLabel?: string;
+  removeButtonLabel?: string;
+  onChange: (next: string[]) => void;
+};
+
+function CustomFieldManagerUI(props: CustomFieldManagerUIProps) {
+  const {
+    label,
+    values,
+    max,
+    placeholder = 'Custom field label',
+    addButtonLabel = '+ Add Custom Field',
+    saveButtonLabel = 'Save',
+    cancelButtonLabel = 'Cancel',
+    emptyLabel = 'No custom fields yet.',
+    removeButtonLabel = 'Remove',
+    onChange,
+  } = props;
+
+  const [isAdding, setIsAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const addButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (isAdding) {
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+      });
+    }
+  }, [isAdding]);
+
+  const normalizedValues = useMemo(() => sanitizeCustomFieldLabels(values, max), [values, max]);
+
+  useEffect(() => {
+    if (!arraysEqual(values, normalizedValues)) {
+      onChange(normalizedValues);
+    }
+    // Only respond when values change shape; eslint disabled intentionally for stable onChange usage.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values, normalizedValues]);
+
+  const remaining = Math.max(0, max - normalizedValues.length);
+
+  const beginAdd = () => {
+    if (remaining <= 0) return;
+    setDraft('');
+    setError(null);
+    setIsAdding(true);
+  };
+
+  const cancelAdd = () => {
+    setIsAdding(false);
+    setDraft('');
+    setError(null);
+    requestAnimationFrame(() => {
+      addButtonRef.current?.focus();
+    });
+  };
+
+  const saveDraft = () => {
+    const trimmed = draft.trim();
+    if (!trimmed) {
+      setError('Please enter a label.');
+      return;
+    }
+    if (normalizedValues.some(v => v.toLowerCase() === trimmed.toLowerCase())) {
+      setError('That label is already added.');
+      return;
+    }
+    if (normalizedValues.length >= max) {
+      setError('Maximum custom fields reached.');
+      return;
+    }
+    const next = sanitizeCustomFieldLabels([...normalizedValues, trimmed], max);
+    onChange(next);
+    setDraft('');
+    setError(null);
+    setIsAdding(false);
+    requestAnimationFrame(() => {
+      addButtonRef.current?.focus();
+    });
+  };
+
+  const removeAt = (index: number) => {
+    const next = normalizedValues.filter((_, idx) => idx !== index);
+    onChange(next);
+  };
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      {label ? <div style={{ fontWeight: 600, marginBottom: 6 }}>{label}</div> : null}
+      {normalizedValues.length === 0 ? (
+        <div style={{ fontSize: 13, opacity: 0.7, marginBottom: 8 }}>{emptyLabel}</div>
+      ) : (
+        <ul style={{ listStyle: 'none', margin: '0 0 12px', padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {normalizedValues.map((value, index) => (
+            <li
+              key={`${value}-${index}`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 10px',
+                border: palette.borderMuted,
+                borderRadius: 6,
+                background: 'var(--f4b-surface-soft)',
+              }}
+            >
+              <span style={{ fontSize: 13, fontWeight: 500 }}>{value}</span>
+              <button
+                type="button"
+                onClick={() => removeAt(index)}
+                style={{
+                  border: palette.borderMuted,
+                  background: 'transparent',
+                  borderRadius: 999,
+                  padding: '4px 10px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+                aria-label={`${removeButtonLabel} ${value}`}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <button
+          type="button"
+          ref={addButtonRef}
+          onClick={beginAdd}
+          disabled={remaining <= 0}
+          style={{
+            alignSelf: 'flex-start',
+            border: palette.borderMuted,
+            background: 'transparent',
+            borderRadius: 999,
+            padding: '6px 12px',
+            fontWeight: 600,
+            cursor: remaining <= 0 ? 'not-allowed' : 'pointer',
+            opacity: remaining <= 0 ? 0.6 : 1,
+          }}
+          data-f4b-focusable="true"
+        >
+          {addButtonLabel}
+        </button>
+
+        {isAdding && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              ref={inputRef}
+              value={draft}
+              onChange={e => {
+                setDraft(e.target.value);
+                if (error) setError(null);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  saveDraft();
+                }
+              }}
+              placeholder={placeholder}
+              style={{ flex: 1, padding: '8px 10px', border: palette.borderMuted, borderRadius: 6 }}
+              data-f4b-focusable="true"
+            />
+            <button
+              type="button"
+              onClick={saveDraft}
+              disabled={!draft.trim()}
+              style={{
+                borderRadius: 6,
+                border: 'none',
+                background: draft.trim() ? 'var(--f4b-accent)' : 'var(--f4b-border-muted)',
+                color: draft.trim() ? '#0f1422' : 'var(--f4b-text-muted)',
+                fontWeight: 600,
+                padding: '8px 12px',
+                cursor: draft.trim() ? 'pointer' : 'not-allowed',
+              }}
+              data-f4b-submit-on-enter="true"
+            >
+              {saveButtonLabel}
+            </button>
+            <button
+              type="button"
+              onClick={cancelAdd}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                fontSize: 12,
+                color: 'var(--f4b-text-secondary)',
+                textDecoration: 'underline',
+              }}
+            >
+              {cancelButtonLabel}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div style={{ fontSize: 11, opacity: 0.6, marginTop: 6 }}>
+        {remaining} custom field{remaining === 1 ? '' : 's'} remaining
+      </div>
+      {error && (
+        <div style={{ color: palette.warning, fontSize: 12, marginTop: 6 }}>{error}</div>
+      )}
+    </div>
+  );
+}
+
+type CustomFieldManagerBridgeProps = {
+  widget: TextWidget;
+  values: unknown;
+  config: NonNullable<NonNullable<TextWidget['options']>['customFieldManager']>;
+  vars: Record<string, any>;
+  setVar: (id: string, value: any) => void;
+  applyAction: ApplyActionFn;
+  working: any | null;
+  original: any | null;
+  autoAction?: string;
+};
+
+function CustomFieldManagerBridge(props: CustomFieldManagerBridgeProps) {
+  const { widget, values, config, vars, setVar, applyAction, working, original, autoAction } = props;
+  const max = config.max ?? 8;
+  const normalized = useMemo(() => sanitizeCustomFieldLabels(values, max), [values, max]);
+
+  useEffect(() => {
+    const current = Array.isArray(vars[widget.id]) ? vars[widget.id] : [];
+    if (!arraysEqual(current, normalized)) {
+      setVar(widget.id, normalized);
+    }
+  }, [normalized, setVar, widget.id, vars]);
+
+  const handleChange = useCallback((nextList: string[]) => {
+    const sanitized = sanitizeCustomFieldLabels(nextList, max);
+    setVar(widget.id, sanitized);
+    if (autoAction && (working || original)) {
+      const docForAction = working ?? original;
+      const nextVars = { ...vars, [widget.id]: sanitized };
+      applyAction(autoAction, { doc: docForAction, working: docForAction, varsOverride: nextVars });
+    }
+  }, [autoAction, max, original, working, widget.id, setVar, applyAction, vars]);
+
+  return (
+    <CustomFieldManagerUI
+      label={widget.label}
+      values={normalized}
+      max={max}
+      placeholder={config.placeholder}
+      addButtonLabel={config.addButtonLabel}
+      saveButtonLabel={config.saveButtonLabel}
+      cancelButtonLabel={config.cancelButtonLabel}
+      emptyLabel={config.emptyLabel}
+      removeButtonLabel={config.removeButtonLabel}
+      onChange={handleChange}
+    />
+  );
 }
 
 export function Flux4Bots(props: Flux4BotsProps) {
@@ -187,26 +474,32 @@ export function Flux4Bots(props: Flux4BotsProps) {
     const value = JSON.parse(JSON.stringify(normalized));
     const exists = currentValue !== undefined;
     const op: Operation = { op: exists ? 'replace' : 'add', path, value };
-    try {
-      const updated = await store.applyPatch([op]);
-      const cloned = JSON.parse(JSON.stringify(updated));
-      setOriginal(cloned);
-      setWorking(JSON.parse(JSON.stringify(cloned)));
-      setExplicitOps([]);
-    } catch (err) {
-      console.error('Failed to persist collection changes', err);
-      throw err;
+    if (autoCommit) {
+      try {
+        const updated = await store.applyPatch([op]);
+        const cloned = JSON.parse(JSON.stringify(updated));
+        setOriginal(cloned);
+        setWorking(JSON.parse(JSON.stringify(cloned)));
+        setExplicitOps([]);
+      } catch (err) {
+        console.error('Failed to persist collection changes', err);
+        throw err;
+      }
+    } else {
+      const nextDoc = JSON.parse(JSON.stringify(working ?? original));
+      setAtPointer(nextDoc, path, value);
+      setWorking(nextDoc);
     }
-  }, [store, working, original]);
+  }, [store, working, original, autoCommit]);
 
   function setVar(id: string, value: any) {
     setVars(prev => ({ ...prev, [id]: value }));
   }
 
-  function applyAction(
-    name: string | undefined,
-    opts?: { doc?: any; working?: any; varsOverride?: Record<string, any>; force?: boolean },
-  ) {
+  const applyAction: ApplyActionFn = (
+    name,
+    opts,
+  ) => {
     if (!name) return opts?.working ?? working ?? null;
     const handler = actions?.[name];
     if (!handler) return opts?.working ?? working ?? null;
@@ -233,7 +526,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
     }
 
     return nextWorking;
-  }
+  };
 
   /* ------------------- renderers ------------------- */
 
@@ -242,6 +535,22 @@ export function Flux4Bots(props: Flux4BotsProps) {
     const value = boundPath && working ? getAtPointer(working, boundPath) : (vars[w.id] ?? '');
     const autoAction = w.options?.autoAction;
     const isDisabled = !!w.options?.readOnly && !boundPath;
+
+    if (w.options?.customFieldManager) {
+      return (
+        <CustomFieldManagerBridge
+          widget={w}
+          values={value}
+          config={w.options.customFieldManager}
+          vars={vars}
+          setVar={setVar}
+          applyAction={applyAction}
+          working={working}
+          original={original}
+          autoAction={autoAction}
+        />
+      );
+    }
 
     if (w.options?.readOnly && boundPath) {
       return (
@@ -349,7 +658,6 @@ export function Flux4Bots(props: Flux4BotsProps) {
               if (autoCommit || !canCommit) return;
               void onCommit();
             } : undefined}
-            focusCommitOnTabExit={allowMultiple && !autoCommit ? focusCommitButton : undefined}
             markFirstFocusable
           />
           {w.binding && !boundPath && (
@@ -735,9 +1043,12 @@ export function Flux4Bots(props: Flux4BotsProps) {
   const canRender = Boolean(template && original && working);
 
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (target && 'dataset' in target && (target as HTMLElement).dataset.f4bSubmitOnEnter === 'true') {
+      return;
+    }
     if (event.key !== 'Enter') return;
     if (event.shiftKey) return; // allow newline with shift+Enter
-    const target = event.target as HTMLElement | null;
     if (!isTextEntryElement(target)) return;
     if (autoCommit || !canCommit) return;
     event.preventDefault();

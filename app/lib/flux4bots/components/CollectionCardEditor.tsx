@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import type { CardCollectionOptions, ListItemSpec, TextWidget, SelectWidget } from '../types';
 import { setAtPointer } from '../core/pointer';
 
@@ -153,6 +153,31 @@ export default function CollectionCardEditor(props: CardCollectionEditorProps) {
   const [form, setForm] = useState<FormState>(() => defaultFormState(fieldMap, bulletsFieldId));
   const [errors, setErrors] = useState<ValidationError | null>(null);
   const [pending, setPending] = useState<PendingState>('idle');
+  const bulletInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const registerBulletRef = useCallback((index: number) => (node: HTMLInputElement | null) => {
+    bulletInputRefs.current[index] = node;
+  }, []);
+
+  const bulletsValue = useMemo(() => {
+    if (!bulletsFieldId) return [] as string[];
+    const raw = form[bulletsFieldId];
+    return Array.isArray(raw) ? raw : [];
+  }, [form, bulletsFieldId]);
+
+  const prevBulletCountRef = useRef(0);
+  useEffect(() => {
+    const count = bulletsValue.length;
+    const prev = prevBulletCountRef.current;
+    if (count > prev) {
+      const node = bulletInputRefs.current[count - 1];
+      if (node) {
+        requestAnimationFrame(() => {
+          node.focus();
+        });
+      }
+    }
+    prevBulletCountRef.current = count;
+  }, [bulletsValue]);
 
   useEffect(() => {
     if (mode === 'edit' && activeIndex != null) {
@@ -464,6 +489,7 @@ export default function CollectionCardEditor(props: CardCollectionEditorProps) {
                       {bulletValues.map((bullet, bulletIdx) => (
                         <div key={bulletIdx} style={{ display: 'flex', gap: 8 }}>
                           <input
+                            ref={registerBulletRef(bulletIdx)}
                             value={bullet}
                             onChange={e => updateBullet(bulletIdx, e.target.value)}
                             placeholder={`Bullet ${bulletIdx + 1}`}

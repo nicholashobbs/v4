@@ -5,6 +5,15 @@ export type Binding = { path: Pointer }; // may include ${/pointer} segments
 export type TextOptions = {
   readOnly?: boolean;
   autoAction?: string;
+  customFieldManager?: {
+    max?: number;
+    addButtonLabel?: string;
+    saveButtonLabel?: string;
+    cancelButtonLabel?: string;
+    placeholder?: string;
+    emptyLabel?: string;
+    removeButtonLabel?: string;
+  };
 };
 
 // Values for selects can be simple strings or labeled objects

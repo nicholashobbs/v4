@@ -10,6 +10,7 @@ import {
   builtins,
 } from '../../../lib/flux4bots';
 import type { Operation, ActionRegistry, LoadedStep, ResumeSectionKey } from '../../../lib/flux4bots';
+import { sanitizeCustomFieldLabels } from '../../../lib/flux4bots/utils/customFields';
 
 const BASE = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:8000';
 
@@ -108,16 +109,29 @@ export default function ClientConvo4({
         .replace(/^-+|-+$/g, '') || 'field';
     };
 
-    const CUSTOM_FIELD_STATE = 'contact.customFieldSlug';
+    type CustomFieldEntry = { label: string; slug: string };
+    const CUSTOM_FIELD_STATE = 'contact.customFieldEntries';
 
-    const uniqueContactKey = (ctx: Parameters<ActionRegistry[string]>[0], base: string, prefer?: string | null) => {
-      if (prefer) return prefer;
+    const ensureUniqueSlug = (
+      ctx: Parameters<ActionRegistry[string]>[0],
+      base: string,
+      taken: Set<string>,
+      prevBySlug: Map<string, CustomFieldEntry>,
+      prefer?: string | null,
+    ) => {
       const encode = ctx.helpers.encode;
-      let slug = base || 'field';
-      let counter = 2;
-      while (ctx.helpers.get(ctx.doc, `/contact/${encode(slug)}`) !== undefined) {
-        slug = `${base || 'field'}-${counter++}`;
+      if (prefer && !taken.has(prefer)) {
+        taken.add(prefer);
+        return prefer;
       }
+
+      const normalizedBase = base || 'field';
+      let slug = normalizedBase;
+      let counter = 2;
+      while (taken.has(slug) || (ctx.helpers.get(ctx.doc, `/contact/${encode(slug)}`) !== undefined && !prevBySlug.has(slug))) {
+        slug = `${normalizedBase}-${counter++}`;
+      }
+      taken.add(slug);
       return slug;
     };
 
@@ -134,7 +148,7 @@ export default function ClientConvo4({
           : rawSelection != null
             ? [rawSelection]
             : [];
-        const selected = Array.from(new Set(selectedArray.map((val: any) => String(val))));
+        const selected = Array.from(new Set(selectedArray.map((val: any) => String(val)))).filter(v => v !== 'custom');
 
         const builtinMap: Record<string, string> = {
           phone: 'phone',
@@ -163,35 +177,45 @@ export default function ClientConvo4({
           }
         }
 
-        const prevSlug = ctx.runtime.getState?.(CUSTOM_FIELD_STATE) as string | undefined;
-        if (!selected.includes('custom') && prevSlug) {
-          const prevPath = `/contact/${ctx.helpers.encode(prevSlug)}`;
-          if (ctx.helpers.get(ctx.doc, prevPath) !== undefined) {
-            ops.push({ op: 'remove', path: prevPath });
-          }
-          ctx.runtime.setState?.(CUSTOM_FIELD_STATE, undefined as any);
-        }
+        const customLabels = sanitizeCustomFieldLabels(ctx.vars.customContactField, 8);
+        const prevEntriesRaw = ctx.runtime.getState?.(CUSTOM_FIELD_STATE);
+        const prevEntries: CustomFieldEntry[] = Array.isArray(prevEntriesRaw)
+          ? prevEntriesRaw.filter((entry): entry is CustomFieldEntry => (
+              entry && typeof entry.label === 'string' && typeof entry.slug === 'string'
+            ))
+          : [];
 
-        if (selected.includes('custom')) {
-          const label = String(ctx.vars.customContactField ?? '').trim();
+        const prevByLabel = new Map(prevEntries.map(entry => [entry.label.toLowerCase(), entry]));
+        const prevBySlug = new Map(prevEntries.map(entry => [entry.slug, entry]));
+        const takenSlugs = new Set<string>(Object.values(builtinMap));
+
+        const nextEntries: CustomFieldEntry[] = [];
+        for (const label of customLabels) {
+          const lower = label.toLowerCase();
+          const prev = prevByLabel.get(lower);
           const baseSlug = slugify(label);
+          const slug = ensureUniqueSlug(ctx, baseSlug, takenSlugs, prevBySlug, prev?.slug);
+          nextEntries.push({ label, slug });
+        }
 
-          if (prevSlug && (!label || baseSlug !== prevSlug)) {
-            const prevPath = `/contact/${ctx.helpers.encode(prevSlug)}`;
-            if (ctx.helpers.get(ctx.doc, prevPath) !== undefined) {
-              ops.push({ op: 'remove', path: prevPath });
+        const nextSlugs = new Set(nextEntries.map(entry => entry.slug));
+        for (const entry of prevEntries) {
+          if (!nextSlugs.has(entry.slug)) {
+            const path = `/contact/${encode(entry.slug)}`;
+            if (ctx.helpers.get(ctx.doc, path) !== undefined) {
+              ops.push({ op: 'remove', path });
             }
-            ctx.runtime.setState?.(CUSTOM_FIELD_STATE, undefined as any);
-          }
-
-          if (label) {
-            const slug = uniqueContactKey(ctx, baseSlug, prevSlug);
-            const path = `/contact/${ctx.helpers.encode(slug)}`;
-            const exists = ctx.helpers.get(ctx.doc, path) !== undefined;
-            ops.push({ op: exists ? 'replace' : 'add', path, value: '' });
-            ctx.runtime.setState?.(CUSTOM_FIELD_STATE, slug);
           }
         }
+
+        for (const entry of nextEntries) {
+          const path = `/contact/${encode(entry.slug)}`;
+          if (ctx.helpers.get(ctx.doc, path) === undefined) {
+            ops.push({ op: 'add', path, value: '' });
+          }
+        }
+
+        ctx.runtime.setState?.(CUSTOM_FIELD_STATE, nextEntries);
 
         return ops;
       },

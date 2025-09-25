@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useRef } from 'react';
+import React from 'react';
 
 export type ChipOption = { value: string; label: string };
 
@@ -10,7 +10,6 @@ export type ChipSelectProps = {
   onChange: (next: string[]) => void;
   multiple?: boolean;
   onCommitRequest?: () => void;
-  focusCommitOnTabExit?: () => void;
   markFirstFocusable?: boolean;
 };
 
@@ -20,7 +19,6 @@ export function ChipSelect({
   onChange,
   multiple = true,
   onCommitRequest,
-  focusCommitOnTabExit,
   markFirstFocusable = false,
 }: ChipSelectProps) {
   function toggle(value: string) {
@@ -33,24 +31,8 @@ export function ChipSelect({
     }
   }
 
-  const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const registerButton = useCallback((index: number) => (node: HTMLButtonElement | null) => {
-    buttonRefs.current[index] = node;
-  }, []);
-
-  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!focusCommitOnTabExit) return;
-    if (event.key !== 'Tab' || event.shiftKey) return;
-    const buttons = buttonRefs.current.filter(Boolean);
-    if (buttons.length === 0) return;
-    const target = event.target as HTMLElement | null;
-    if (target !== buttons[buttons.length - 1]) return;
-    event.preventDefault();
-    focusCommitOnTabExit();
-  }, [focusCommitOnTabExit]);
-
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }} onKeyDown={handleKeyDown}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
       {options.map((opt, idx) => {
         const isSelected = selected.includes(opt.value);
         const background = isSelected ? 'var(--f4b-accent)' : 'var(--f4b-surface-soft)';
@@ -60,7 +42,6 @@ export function ChipSelect({
           <button
             key={opt.value}
             type="button"
-            ref={registerButton(idx)}
             onClick={() => toggle(opt.value)}
             aria-pressed={isSelected}
             style={{
