@@ -1,5 +1,5 @@
 'use client';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   Flux4BotsProps, Widget, TextWidget, SelectWidget, ListWidget,
   FieldPickerWidget, ActionWidget, Operation, CardCollectionOptions
@@ -31,6 +31,32 @@ const palette = {
   codeBg: 'var(--f4b-code-bg)',
 };
 
+function isTextEntryElement(element: HTMLElement | null): boolean {
+  if (!element) return false;
+  const tagName = element.tagName;
+  if (tagName === 'TEXTAREA') {
+    const textarea = element as HTMLTextAreaElement;
+    return !textarea.readOnly && !textarea.disabled;
+  }
+  if (tagName === 'INPUT') {
+    const input = element as HTMLInputElement;
+    if (input.readOnly || input.disabled) return false;
+    const normalizedType = (input.type || 'text').toLowerCase();
+    return normalizedType === 'text'
+      || normalizedType === 'search'
+      || normalizedType === 'email'
+      || normalizedType === 'password'
+      || normalizedType === 'url'
+      || normalizedType === 'tel'
+      || normalizedType === 'number';
+  }
+  if (tagName === 'SELECT') {
+    const select = element as HTMLSelectElement;
+    return !select.disabled;
+  }
+  return element.isContentEditable;
+}
+
 function normalizeSelectValues(
   values?: (string | { value: string; label?: string })[] 
 ): NormalizedOption[]{
@@ -58,6 +84,12 @@ export function Flux4Bots(props: Flux4BotsProps) {
   const [explicitOps, setExplicitOps] = useState<Operation[]>([]);
   const [vars, setVars] = useState<Record<string, any>>({}); // captures unbound widget values
   const [showJsonDev, setShowJsonDev] = useState(false);
+  const commitButtonRef = useRef<HTMLButtonElement | null>(null);
+  const contentSectionRef = useRef<HTMLElement | null>(null);
+  const focusHistoryRef = useRef<string | null>(null);
+  const focusCommitButton = useCallback(() => {
+    commitButtonRef.current?.focus();
+  }, []);
 
   // Load doc
   useEffect(() => {
@@ -209,6 +241,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
     const boundPath = working ? resolveBindingPath(w.binding, working) : null;
     const value = boundPath && working ? getAtPointer(working, boundPath) : (vars[w.id] ?? '');
     const autoAction = w.options?.autoAction;
+    const isDisabled = !!w.options?.readOnly && !boundPath;
 
     if (w.options?.readOnly && boundPath) {
       return (
@@ -243,7 +276,8 @@ export function Flux4Bots(props: Flux4BotsProps) {
             }
           }}
           style={{ padding: 8, width: 360 }}
-          disabled={!!w.options?.readOnly && !boundPath}
+          disabled={isDisabled}
+          data-f4b-focusable={isDisabled ? undefined : 'true'}
         />
         {w.binding && !boundPath && (
           <div style={{ fontSize: 12, color: palette.warning, marginTop: 4 }}>
@@ -306,7 +340,18 @@ export function Flux4Bots(props: Flux4BotsProps) {
       return (
         <div style={{ marginBottom: 12 }}>
           {w.label ? <div style={{ fontWeight: 600, marginBottom: 6 }}>{w.label}</div> : null}
-          <ChipSelect options={options} selected={selected} multiple={allowMultiple} onChange={handleChange} />
+          <ChipSelect
+            options={options}
+            selected={selected}
+            multiple={allowMultiple}
+            onChange={handleChange}
+            onCommitRequest={!allowMultiple ? () => {
+              if (autoCommit || !canCommit) return;
+              void onCommit();
+            } : undefined}
+            focusCommitOnTabExit={allowMultiple && !autoCommit ? focusCommitButton : undefined}
+            markFirstFocusable
+          />
           {w.binding && !boundPath && (
             <div style={{ fontSize: 12, color: palette.warning, marginTop: 4 }}>
               Binding path could not resolve at runtime.
@@ -328,6 +373,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
           value={value}
           onChange={e => writeValue(e.target.value)}
           style={{ padding: 8, width: 360 }}
+          data-f4b-focusable="true"
         >
           {value === '' && <option value="" disabled>— select —</option>}
           {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
@@ -425,6 +471,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
                             setWorking(next);
                           }}
                           style={{ padding: 8, width: 360 }}
+                          data-f4b-focusable="true"
                         />
                         <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath}</div>
                       </div>
@@ -443,6 +490,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
                             setWorking(next);
                           }}
                           style={{ padding: 8, width: 360 }}
+                          data-f4b-focusable="true"
                         >
                           {selectOpts.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                         </select>
@@ -521,6 +569,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
                             setWorking(next);
                           }}
                           style={{ padding: 8, width: 360 }}
+                          data-f4b-focusable="true"
                         />
                         <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath}</div>
                       </div>
@@ -539,6 +588,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
                             setWorking(next);
                           }}
                           style={{ padding: 8, width: 360 }}
+                          data-f4b-focusable="true"
                         >
                           {selectOpts.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                         </select>
@@ -597,6 +647,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
             }}
             style={{ padding: 8, width: 360 }}
             disabled={keys.length === 0}
+            data-f4b-focusable={keys.length === 0 ? undefined : 'true'}
           >
             <option value="" disabled>— select —</option>
             {keys.map(k => {
@@ -640,6 +691,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
                 name={w.id}
                 checked={checked(k)}
                 onChange={e => toggle(k, e.target.checked)}
+                data-f4b-focusable="true"
               />
               {k} <span style={{ opacity: 0.6, fontSize: 12 }}>({basePath}/{encodePointerSegment(k)})</span>
             </label>
@@ -682,8 +734,39 @@ export function Flux4Bots(props: Flux4BotsProps) {
 
   const canRender = Boolean(template && original && working);
 
+  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.key !== 'Enter') return;
+    if (event.shiftKey) return; // allow newline with shift+Enter
+    const target = event.target as HTMLElement | null;
+    if (!isTextEntryElement(target)) return;
+    if (autoCommit || !canCommit) return;
+    event.preventDefault();
+    onCommit();
+  }, [autoCommit, canCommit, onCommit]);
+
+  const templateFocusKey = useMemo(() => {
+    const childrenKey = Array.isArray(template?.layout?.children)
+      ? template.layout.children.join('|')
+      : '';
+    return `${template?.name ?? 'template'}::${childrenKey}`;
+  }, [template]);
+
+  useEffect(() => {
+    if (!canRender) return;
+    if (!templateFocusKey) return;
+    if (focusHistoryRef.current === templateFocusKey) return;
+    focusHistoryRef.current = templateFocusKey;
+    const container = contentSectionRef.current;
+    if (!container) return;
+    const selector = '[data-f4b-focusable="true"]';
+    requestAnimationFrame(() => {
+      const first = container.querySelector<HTMLElement>(selector);
+      if (first) first.focus();
+    });
+  }, [canRender, templateFocusKey]);
+
   return (
-    <div>
+    <div onKeyDown={handleKeyDown}>
       {!canRender ? (
         <p style={{ opacity: 0.8 }}>Loading document…</p>
       ) : (
@@ -713,6 +796,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
               borderRadius: 8,
               marginBottom: 16,
             }}
+            ref={contentSectionRef}
           >
             <div
               style={{
@@ -746,6 +830,7 @@ export function Flux4Bots(props: Flux4BotsProps) {
                     type="button"
                     onClick={onCommit}
                     disabled={!canCommit}
+                    ref={commitButtonRef}
                     style={{
                       padding: '8px 12px',
                       borderRadius: 6,
@@ -764,11 +849,23 @@ export function Flux4Bots(props: Flux4BotsProps) {
             </div>
             {template.layout.type !== 'vertical'
               ? <div style={{ color: palette.warning }}>Unsupported layout</div>
-              : template.layout.children.map(cid => {
-                  const w = template.widgets.find(x => x.id === cid);
-                  return w ? <React.Fragment key={cid}>{renderWidget(w)}</React.Fragment>
-                           : <div key={cid} style={{ color: palette.warning }}>Missing widget: {cid}</div>;
-                })
+              : (
+                <>
+                  {template.layout.children.map(cid => {
+                    const w = template.widgets.find(x => x.id === cid);
+                    return w
+                      ? <React.Fragment key={cid}>{renderWidget(w)}</React.Fragment>
+                      : <div key={cid} style={{ color: palette.warning }}>Missing widget: {cid}</div>;
+                  })}
+                  {!autoCommit && (
+                    <div
+                      tabIndex={0}
+                      onFocus={focusCommitButton}
+                      style={{ width: 0, height: 0, padding: 0, margin: 0, border: 'none', outline: 'none' }}
+                    />
+                  )}
+                </>
+              )
             }
           </section>
 

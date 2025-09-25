@@ -468,6 +468,7 @@ export default function CollectionCardEditor(props: CardCollectionEditorProps) {
                             onChange={e => updateBullet(bulletIdx, e.target.value)}
                             placeholder={`Bullet ${bulletIdx + 1}`}
                             style={{ flex: 1, padding: '8px 10px', border: palette.borderMuted, borderRadius: 6 }}
+                            data-f4b-focusable="true"
                           />
                           <button
                             type="button"
@@ -510,6 +511,7 @@ export default function CollectionCardEditor(props: CardCollectionEditorProps) {
                     value={typeof value === 'string' ? value : ''}
                     onChange={e => updateField(fieldId, e.target.value)}
                     style={{ padding: '8px 10px', border: palette.borderMuted, borderRadius: 6 }}
+                    data-f4b-focusable="true"
                   />
                   {errors?.field === fieldId && (
                     <span style={{ color: 'var(--f4b-warning)', fontSize: 12 }}>{errors.message}</span>
