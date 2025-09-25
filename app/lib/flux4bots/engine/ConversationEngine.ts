@@ -81,15 +81,18 @@ export class ConversationEngine {
 
         // Persist (auto-create conversation on first save if needed)
         if (this.adapter) {
-          this.ensureConversation().then(() => {
+          try {
+            await this.ensureConversation();
             if (this._convId) {
-              this.adapter!.appendStep(this._convId, {
+              this.adapter.appendStep(this._convId, {
                 templatePath: committedStep.templatePath,
                 mode: committedStep.mode,
                 ops: committedStep.ops,
               }).catch(() => { /* swallow */ });
             }
-          }).catch(() => { /* swallow */ });
+          } catch {
+            // swallow
+          }
         }
 
         if (this.onCommitted) this.onCommitted(committedStep, deepClone(this._currentDoc));

@@ -138,14 +138,17 @@ export function createResumeActions(args: {
     const stepForSection = sectionSteps[key];
     if (!stepForSection || !hubStep) return [];
 
-    runtime.enqueueSteps([stepForSection, hubStep]);
+    const nextSteps = [stepForSection, hubStep];
     writeSession(ctx, (draft) => {
       draft.activeSection = key;
       if (draft.statuses[key] !== 'done') {
         draft.statuses[key] = 'in-progress';
       }
     });
+    // Complete the hub step before queueing follow-up steps so the new section
+    // becomes the active step immediately (avoids needing a second click).
     ctx.runtime.completeStep?.();
+    runtime.enqueueSteps(nextSteps);
     return [];
   };
 

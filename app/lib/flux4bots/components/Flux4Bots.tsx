@@ -413,76 +413,92 @@ export function Flux4Bots(props: Flux4BotsProps) {
     if (!working) return null;
     const basePath = w.options.basePath;
     const obj = getAtPointer(working, basePath);
-    const keys = (obj && typeof obj === 'object') ? Object.keys(obj) : [];
+    const keys = obj && typeof obj === 'object' ? Object.keys(obj) : [];
 
     const boundPath = resolveBindingPath(w.binding, working);
     const isMulti = w.options.selection === 'multiple';
 
-    // Read current selection: from doc if bound, else from vars[w.id]
     const currentSel = boundPath
-        ? getAtPointer(working, boundPath)
-        : (vars[w.id] ?? (isMulti ? [] : null));
+      ? getAtPointer(working, boundPath)
+      : (vars[w.id] ?? (isMulti ? [] : null));
 
-    // Helper to write selection either to doc (bound) or to vars (unbound)
     function writeSelection(nextValue: string | string[] | null) {
-        if (boundPath) {
+      if (boundPath) {
         const next = JSON.parse(JSON.stringify(working));
         setAtPointer(next, boundPath, nextValue);
         setWorking(next);
-        } else {
+      } else {
         setVar(w.id, nextValue);
-        }
+      }
     }
 
-    function pointerForKey(k: string) {
-        return `${basePath}/${encodePointerSegment(k)}`;
+    const pointerForKey = (k: string) => `${basePath}/${encodePointerSegment(k)}`;
+
+    if (!isMulti) {
+      const value = typeof currentSel === 'string' ? currentSel : '';
+      return (
+        <div style={{ marginBottom: 12 }}>
+          {w.label ? <label style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>{w.label}</label> : null}
+          <select
+            value={value}
+            onChange={e => {
+              const nextPtr = e.target.value || null;
+              writeSelection(nextPtr);
+            }}
+            style={{ padding: 8, width: 360 }}
+            disabled={keys.length === 0}
+          >
+            <option value="" disabled>— select —</option>
+            {keys.map(k => {
+              const ptr = pointerForKey(k);
+              return (
+                <option key={k} value={ptr}>
+                  {k}
+                </option>
+              );
+            })}
+          </select>
+          <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>{basePath}</div>
+          {keys.length === 0 && <div style={{ opacity: 0.7, marginTop: 6 }}>No keys under {basePath}</div>}
+        </div>
+      );
     }
 
-    function isCheckedFor(picked: any) {
-        if (isMulti) {
-        const arr: string[] = Array.isArray(picked) ? picked : [];
-        const set = new Set(arr);
-        return (k: string) => set.has(pointerForKey(k));
-        }
-        return (k: string) => picked === pointerForKey(k);
-    }
-
-    const checked = isCheckedFor(currentSel);
+    const checked = (key: string) => {
+      const arr: string[] = Array.isArray(currentSel) ? currentSel : [];
+      const set = new Set(arr);
+      return set.has(pointerForKey(key));
+    };
 
     function toggle(key: string, checkedNow: boolean) {
-        const ptr = pointerForKey(key);
-        if (isMulti) {
-        const cur: string[] = Array.isArray(currentSel) ? currentSel : [];
-        const next = checkedNow
-            ? Array.from(new Set([...cur, ptr]))
-            : cur.filter(p => p !== ptr);
-        writeSelection(next);
-        } else {
-        writeSelection(checkedNow ? ptr : null);
-        }
+      const ptr = pointerForKey(key);
+      const cur: string[] = Array.isArray(currentSel) ? currentSel : [];
+      const next = checkedNow
+        ? Array.from(new Set([...cur, ptr]))
+        : cur.filter(p => p !== ptr);
+      writeSelection(next);
     }
 
     return (
-        <div style={{ marginBottom: 12 }}>
+      <div style={{ marginBottom: 12 }}>
         {w.label ? <label style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>{w.label}</label> : null}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {keys.map(k => (
+          {keys.map(k => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input
-                type={isMulti ? 'checkbox' : 'radio'}
+              <input
+                type="checkbox"
                 name={w.id}
-                checked={!!checked(k)}
+                checked={checked(k)}
                 onChange={e => toggle(k, e.target.checked)}
-                />
-                {k} <span style={{ opacity: 0.6, fontSize: 12 }}>({basePath}/{encodePointerSegment(k)})</span>
+              />
+              {k} <span style={{ opacity: 0.6, fontSize: 12 }}>({basePath}/{encodePointerSegment(k)})</span>
             </label>
-            ))}
-            {keys.length === 0 && <span style={{ opacity: 0.7 }}>No keys under {basePath}</span>}
+          ))}
+          {keys.length === 0 && <span style={{ opacity: 0.7 }}>No keys under {basePath}</span>}
         </div>
-        </div>
+      </div>
     );
-    }
-
+  }
 
   function renderAction(w: ActionWidget) {
     const name = w.options?.action;
