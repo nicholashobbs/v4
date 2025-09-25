@@ -8,18 +8,173 @@ import {
   ConversationEngine,
   FastApiAdapter,
   builtins,
+  applyPatch,
+  RESUME_SECTION_CONFIG,
+  decodePointerSegment,
+  getAtPointer,
 } from '../../../lib/flux4bots';
-import type { Operation, ActionRegistry, LoadedStep, ResumeSectionKey } from '../../../lib/flux4bots';
+import type { Operation, ActionRegistry, LoadedStep, ResumeSectionKey, CommittedStep } from '../../../lib/flux4bots';
 import { sanitizeCustomFieldLabels } from '../../../lib/flux4bots/utils/customFields';
 
 const BASE = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:8000';
 
-function summarizeOps(ops: Operation[]) {
-  return ops.map(o => {
-    if (o.op === 'remove') return `remove ${o.path}`;
-    if (o.op === 'add') return `add ${o.path} = ${JSON.stringify(o.value)}`;
-    return `replace ${o.path} = ${JSON.stringify(o.value)}`;
-  });
+function cloneValue<T>(value: T): T {
+  if (value === undefined) return value;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function humanizeKey(input: string): string {
+  const cleaned = input.replace(/[_-]+/g, ' ');
+  return cleaned.replace(/\b\w/g, char => char.toUpperCase()).trim() || input;
+}
+
+function formatValuePreview(value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    const shortened = trimmed.length > 60 ? `${trimmed.slice(0, 57)}…` : trimmed;
+    return `"${shortened}"`;
+  }
+  if (Array.isArray(value)) {
+    const joined = value.join(', ');
+    return joined.length > 60 ? `${joined.slice(0, 57)}…` : joined;
+  }
+  if (typeof value === 'object') {
+    try {
+      const asJson = JSON.stringify(value);
+      return asJson.length > 60 ? `${asJson.slice(0, 57)}…` : asJson;
+    } catch {
+      return '[object]';
+    }
+  }
+  return String(value);
+}
+
+const resumeLabelByKey = new Map(RESUME_SECTION_CONFIG.map(item => [item.key, item.label] as const));
+
+function buildFieldDescription(segments: string[]): string {
+  if (segments.length === 0) return 'value';
+  const segmentToPhrase = (seg: string, idx: number) => {
+    if (seg === '-') return 'new item';
+    if (/^\d+$/.test(seg)) return `item ${Number(seg) + 1}`;
+    const phrase = humanizeKey(seg);
+    if (idx === 0) return phrase;
+    return phrase.toLowerCase();
+  };
+  const parts = segments.map(segmentToPhrase);
+  if (parts.length === 1) return humanizeKey(segments[0]);
+  const [first, ...rest] = parts;
+  return `${humanizeKey(first)} ${rest.join(' ')}`.trim();
+}
+
+function describeOperationFallback(op: Operation, beforeDoc: any): string {
+  const rawSegments = op.path.split('/').slice(1).map(decodePointerSegment);
+  const fieldDescription = buildFieldDescription(rawSegments);
+  if (op.op === 'remove') {
+    const previous = getAtPointer(beforeDoc, op.path);
+    const prevPreview = previous ? formatValuePreview(previous) : '';
+    return prevPreview
+      ? `Removed ${fieldDescription} (${prevPreview}).`
+      : `Removed ${fieldDescription}.`;
+  }
+  const valuePreview = formatValuePreview(op.value);
+  if (op.op === 'add') {
+    return valuePreview === '—'
+      ? `Added ${fieldDescription}.`
+      : `Added ${fieldDescription} ${valuePreview}.`;
+  }
+  return valuePreview === '—'
+    ? `Updated ${fieldDescription}.`
+    : `Set ${fieldDescription} to ${valuePreview}.`;
+}
+
+function buildUserMessages(args: {
+  step: CommittedStep;
+  beforeDoc: any;
+  afterDoc: any;
+}): string[] {
+  const { step, beforeDoc, afterDoc } = args;
+  let messages: string[] = [];
+
+  switch (step.templatePath) {
+    case './step1-name.yaml': {
+      const beforeName = beforeDoc?.contact?.name ?? '';
+      const afterName = afterDoc?.contact?.name ?? '';
+      if (afterName && !beforeName) messages = [`Added name "${afterName}".`];
+      else if (afterName && beforeName && afterName !== beforeName) messages = [`Updated name to "${afterName}".`];
+      else if (!afterName && beforeName) messages = ['Removed contact name.'];
+      break;
+    }
+    case './step2-choose-fields.yaml': {
+      const beforeContact = beforeDoc?.contact ?? {};
+      const afterContact = afterDoc?.contact ?? {};
+      const beforeKeys = new Set(Object.keys(beforeContact).filter(key => key !== 'name'));
+      const afterKeys = Object.keys(afterContact).filter(key => key !== 'name');
+      const added = afterKeys.filter(key => !beforeKeys.has(key));
+      const removed = Array.from(beforeKeys).filter(key => !afterKeys.includes(key));
+      const changes: string[] = [];
+      for (const key of added) changes.push(`Added ${humanizeKey(key)} field to contact.`);
+      for (const key of removed) changes.push(`Removed ${humanizeKey(key)} field from contact.`);
+      if (changes.length === 0 && afterKeys.length === 0) changes.push('No contact fields selected.');
+      messages = changes;
+      break;
+    }
+    case './step3-fill-chosen.yaml': {
+      const beforeContact = beforeDoc?.contact ?? {};
+      const afterContact = afterDoc?.contact ?? {};
+      const keys = new Set([
+        ...Object.keys(beforeContact),
+        ...Object.keys(afterContact),
+      ]);
+      keys.delete('name');
+      const changes: string[] = [];
+      for (const key of keys) {
+        const beforeVal = beforeContact[key] ?? '';
+        const afterVal = afterContact[key] ?? '';
+        if (beforeVal === afterVal) continue;
+        const label = humanizeKey(key);
+        if (afterVal === '') {
+          changes.push(`Cleared ${label} field.`);
+        } else if (!beforeVal) {
+          changes.push(`Added "${afterVal}" to ${label} field.`);
+        } else {
+          changes.push(`Updated ${label} field to "${afterVal}".`);
+        }
+      }
+      messages = changes;
+      break;
+    }
+    case './step4-create-sections.yaml': {
+      const beforeResume = beforeDoc?.resume ?? {};
+      const afterResume = afterDoc?.resume ?? {};
+      const beforeKeys = new Set(Object.keys(beforeResume));
+      const afterKeys = Object.keys(afterResume);
+      const added = afterKeys.filter(key => !beforeKeys.has(key));
+      const removed = Array.from(beforeKeys).filter(key => !afterKeys.includes(key));
+      const changes: string[] = [];
+      for (const key of added) {
+        const label = resumeLabelByKey.get(key as any) ?? humanizeKey(key);
+        changes.push(`Added ${label} section.`);
+      }
+      for (const key of removed) {
+        const label = resumeLabelByKey.get(key as any) ?? humanizeKey(key);
+        changes.push(`Removed ${label} section.`);
+      }
+      if (changes.length === 0 && afterKeys.length === 0) changes.push('No resume sections selected.');
+      messages = changes;
+      break;
+    }
+    case './step5-section-hub.yaml': {
+      messages = ['Selected the next resume section to continue.'];
+      break;
+    }
+    default: {
+      const fallbackMessages = step.ops.map(op => describeOperationFallback(op, beforeDoc));
+      messages = fallbackMessages;
+    }
+  }
+
+  return messages.length > 0 ? messages : ['No changes recorded.'];
 }
 
 export default function ClientConvo4({
@@ -56,6 +211,8 @@ export default function ClientConvo4({
     }
     return catalog;
   }, [steps, resumeSectionSteps]);
+
+  const initialDocSnapshot = useMemo(() => cloneValue(initialDoc ?? {}), [initialDoc]);
 
   // instantiate engine once for these props
   const engine = useMemo(() => {
@@ -282,6 +439,31 @@ export default function ClientConvo4({
   }), []);
 
   const curStep = engine.currentStep;
+  const committedSteps = engine.committed;
+
+  const historyEntries = useMemo(() => {
+    const entries: Array<{
+      step: CommittedStep;
+      botText: string;
+      userLines: string[];
+      timeLabel: string;
+    }> = [];
+    let workingDoc = cloneValue(initialDocSnapshot ?? {});
+
+    for (const step of committedSteps) {
+      const beforeDoc = cloneValue(workingDoc ?? {});
+      const afterDoc = step.ops.length > 0 ? applyPatch(beforeDoc, step.ops) : cloneValue(beforeDoc ?? {});
+      const templateNameRaw = stepCatalog[step.templatePath]?.template.name ?? step.templatePath;
+      const botText = templateNameRaw.replace(/—/g, '-');
+      const userLines = buildUserMessages({ step, beforeDoc, afterDoc });
+      const timeLabel = new Date(step.at).toLocaleTimeString();
+
+      entries.push({ step, botText, userLines, timeLabel });
+      workingDoc = afterDoc;
+    }
+
+    return entries;
+  }, [committedSteps, initialDocSnapshot, stepCatalog]);
   const stepAutoCommit = curStep?.template.meta?.autoCommit ?? false;
 
   return (
@@ -289,20 +471,27 @@ export default function ClientConvo4({
       {/* Left: chat column */}
       <div className="border-r border-[var(--f4b-border)] flex flex-col min-h-0 bg-[var(--f4b-surface-muted)]">
         {/* History */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-4">
-          {engine.committed.length === 0 && (
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-5">
+          {historyEntries.length === 0 && (
             <div className="text-[var(--f4b-text-muted)] mt-2">Start with your name, then choose fields.</div>
           )}
-          {engine.committed.map((st, i) => {
-            const opLines = summarizeOps(st.ops);
-            return (
-              <div key={i} className="space-y-2">
-                <div className="inline-block max-w-[85%] rounded-xl border border-[var(--f4b-border)] bg-[var(--f4b-surface)] px-3 py-2">
-                  <div className="text-[12px] text-[var(--f4b-text-muted)] mb-1">
-                    {st.mode} • {new Date(st.at).toLocaleTimeString()}
-                  </div>
-                  {opLines.map((l, idx) => <div key={idx}>{l}</div>)}
-                  {i === engine.committed.length - 1 && (
+          {historyEntries.map((entry, index) => (
+            <div key={`${entry.step.at}-${index}`} className="space-y-2">
+              <div className="flex justify-start">
+                <div className="max-w-[75%] min-w-[200px] rounded-xl border border-[var(--f4b-border-muted)] bg-[var(--f4b-surface-soft)] px-3 py-2 shadow-sm">
+                  <div className="text-[12px] text-[var(--f4b-text-muted)] mb-1">Bot • {entry.timeLabel}</div>
+                  <div className="text-sm font-medium text-[var(--f4b-text-primary)]">{entry.botText}</div>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <div className="max-w-[75%] min-w-[200px] rounded-xl border border-[var(--f4b-border)] bg-[var(--f4b-surface)] px-3 py-2">
+                  <div className="text-[12px] text-[var(--f4b-text-muted)] mb-1">You • {entry.timeLabel}</div>
+                  {entry.userLines.map((line, idx) => (
+                    <div key={idx} className="text-sm leading-snug text-[var(--f4b-text-primary)]">
+                      {line}
+                    </div>
+                  ))}
+                  {index === historyEntries.length - 1 && (
                     <div className="mt-2">
                       <button className="text-[12px] text-[var(--f4b-accent)] underline" onClick={onUndoLast} type="button">
                         Undo
@@ -311,8 +500,8 @@ export default function ClientConvo4({
                   )}
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
 
         {/* Composer (pinned bottom, scrolls internally if tall) */}
