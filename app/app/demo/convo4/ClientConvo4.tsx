@@ -28,6 +28,13 @@ function humanizeKey(input: string): string {
   return cleaned.replace(/\b\w/g, char => char.toUpperCase()).trim() || input;
 }
 
+function formatList(items: string[]): string {
+  if (items.length <= 1) return items.join('');
+  const head = items.slice(0, -1).join(', ');
+  const tail = items[items.length - 1];
+  return `${head} and ${tail}`;
+}
+
 function formatValuePreview(value: unknown): string {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'string') {
@@ -70,6 +77,33 @@ function buildFieldDescription(segments: string[]): string {
 function describeOperationFallback(op: Operation, beforeDoc: any): string {
   const rawSegments = op.path.split('/').slice(1).map(decodePointerSegment);
   const fieldDescription = buildFieldDescription(rawSegments);
+  const root = rawSegments[0] ?? '';
+
+  if (root === 'contact') {
+    if (rawSegments.length === 1 && (op.op === 'add' || op.op === 'replace')) {
+      const value = op.value as Record<string, any> | undefined;
+      const detailsEntries = value && typeof value === 'object'
+        ? Object.entries(value).filter(([_, v]) => typeof v === 'string' && v !== '')
+        : [];
+      const nameEntry = detailsEntries.find(([k]) => k === 'name');
+      if (nameEntry) {
+        const [, nameVal] = nameEntry;
+        const sentenceVerb = op.op === 'add' ? 'Added' : 'Updated';
+        const prefix = sentenceVerb === 'Added' ? 'Added name' : 'Updated name';
+        return `${prefix} "${String(nameVal)}" to contact.`;
+      }
+      const details = detailsEntries.map(([k, v]) => `${humanizeKey(k)} "${String(v)}"`);
+      const summary = details.length > 0 ? ` with ${formatList(details)}` : '';
+      const verb = op.op === 'add' ? 'Added' : 'Updated';
+      return `${verb} contact${summary}.`;
+    }
+    if (rawSegments.length === 2 && rawSegments[1] === 'name') {
+      if (op.op === 'remove') return 'Removed contact name.';
+      const valuePreview = formatValuePreview('value' in op ? op.value : undefined);
+      return `Set contact name to ${valuePreview}.`;
+    }
+  }
+
   if (op.op === 'remove') {
     const previous = getAtPointer(beforeDoc, op.path);
     const prevPreview = previous ? formatValuePreview(previous) : '';
@@ -100,8 +134,8 @@ function buildUserMessages(args: {
     case './step1-name.yaml': {
       const beforeName = beforeDoc?.contact?.name ?? '';
       const afterName = afterDoc?.contact?.name ?? '';
-      if (afterName && !beforeName) messages = [`Added name "${afterName}".`];
-      else if (afterName && beforeName && afterName !== beforeName) messages = [`Updated name to "${afterName}".`];
+      if (afterName && !beforeName) messages = [`Added name "${afterName}" to contact.`];
+      else if (afterName && beforeName && afterName !== beforeName) messages = [`Updated contact name to "${afterName}".`];
       else if (!afterName && beforeName) messages = ['Removed contact name.'];
       break;
     }
@@ -151,21 +185,68 @@ function buildUserMessages(args: {
       const afterKeys = Object.keys(afterResume);
       const added = afterKeys.filter(key => !beforeKeys.has(key));
       const removed = Array.from(beforeKeys).filter(key => !afterKeys.includes(key));
-      const changes: string[] = [];
-      for (const key of added) {
-        const label = resumeLabelByKey.get(key as any) ?? humanizeKey(key);
-        changes.push(`Added ${label} section.`);
+      const addedLabels = added.map(key => resumeLabelByKey.get(key as any) ?? humanizeKey(key));
+      const removedLabels = removed.map(key => resumeLabelByKey.get(key as any) ?? humanizeKey(key));
+
+      if (addedLabels.length > 0) {
+        messages.push(`Added resume sections: ${formatList(addedLabels)}.`);
       }
-      for (const key of removed) {
-        const label = resumeLabelByKey.get(key as any) ?? humanizeKey(key);
-        changes.push(`Removed ${label} section.`);
+      if (removedLabels.length > 0) {
+        messages.push(`Removed resume sections: ${formatList(removedLabels)}.`);
       }
-      if (changes.length === 0 && afterKeys.length === 0) changes.push('No resume sections selected.');
-      messages = changes;
+      if (messages.length === 0) {
+        if (afterKeys.length === 0) {
+          messages.push('No resume sections selected.');
+        } else {
+          messages.push('Kept existing resume sections.');
+        }
+      }
       break;
     }
     case './step5-section-hub.yaml': {
       messages = ['Selected the next resume section to continue.'];
+      break;
+    }
+    case '@resume/experience': {
+      const beforeEntries = Array.isArray(beforeDoc?.resume?.experience) ? beforeDoc.resume.experience : [];
+      const afterEntries = Array.isArray(afterDoc?.resume?.experience) ? afterDoc.resume.experience : [];
+      if (afterEntries.length === 0) {
+        messages = ['No experience items recorded.'];
+        break;
+      }
+      const header = afterEntries.length > beforeEntries.length ? 'Added experience items:' : 'Updated experience items:';
+      const bullets: string[] = [header];
+      afterEntries.forEach((entry: any, idx: number) => {
+        if (!entry || typeof entry !== 'object') {
+          bullets.push(`- Item ${idx + 1}: no details provided.`);
+          return;
+        }
+        const parts: string[] = [];
+        const pushPart = (label: string, value: unknown) => {
+          if (typeof value === 'string' && value.trim() !== '') {
+            parts.push(`${label} "${value.trim()}"`);
+          } else if (Array.isArray(value) && value.length > 0) {
+            const joined = value.map(item => String(item).trim()).filter(Boolean).join('; ');
+            if (joined) parts.push(`${label} ${joined}`);
+          }
+        };
+        pushPart('title', entry.title);
+        pushPart('institution', entry.institution);
+        pushPart('location', entry.location);
+        pushPart('start date', entry.startDate);
+        pushPart('end date', entry.endDate);
+        pushPart('bullets', entry.bullets);
+        const detail = parts.length > 0 ? parts.join(', ') : 'no details provided';
+        bullets.push(`- Item ${idx + 1}: ${detail}.`);
+      });
+      messages = bullets;
+      break;
+    }
+    case '@resume/summary': {
+      const summary = typeof afterDoc?.resume?.summary === 'string' ? afterDoc.resume.summary.trim() : '';
+      messages = summary
+        ? [`Set resume summary to "${summary}".`]
+        : ['Cleared resume summary.'];
       break;
     }
     default: {
