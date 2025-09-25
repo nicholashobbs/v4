@@ -56,7 +56,12 @@ export type CardCollectionOptions = {
   bulletsField?: string;
 };
 
-export type ListWidgetOptions = CardCollectionOptions | Record<string, unknown>;
+export type SkillPillOptions = {
+  layout: 'skill-pills';
+  suggestions?: string[];
+};
+
+export type ListWidgetOptions = CardCollectionOptions | SkillPillOptions | Record<string, unknown>;
 
 export type ListItemSpec = {
   expandable?: boolean;

@@ -24,6 +24,7 @@ export type {
   SelectOptions,
   KeysSource,
   ListItemSpec,
+  SkillPillOptions,
   FieldPickerOptions,
   Flux4BotsProps,
 } from './types';

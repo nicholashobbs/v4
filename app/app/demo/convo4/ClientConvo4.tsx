@@ -59,6 +59,47 @@ function formatValuePreview(value: unknown): string {
 
 const resumeLabelByKey = new Map(RESUME_SECTION_CONFIG.map(item => [item.key, item.label] as const));
 
+type SimpleSkill = { name: string; categories: string[] };
+
+function normalizeSkillEntry(raw: any): SimpleSkill | null {
+  if (raw == null) return null;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    return { name: trimmed, categories: [] };
+  }
+  if (raw && typeof raw === 'object') {
+    const obj = raw as { name?: unknown; categories?: unknown };
+    const name = typeof obj.name === 'string' ? obj.name.trim() : '';
+    if (!name) return null;
+    const categoriesRaw: unknown[] = Array.isArray(obj.categories) ? obj.categories : [];
+    const categorySet = new Set<string>();
+    for (const entry of categoriesRaw) {
+      const normalized = String(entry ?? '').trim();
+      if (normalized) categorySet.add(normalized);
+    }
+    return { name, categories: Array.from(categorySet) };
+  }
+  return null;
+}
+
+function normalizeSkillsCollection(source: any): SimpleSkill[] {
+  if (!Array.isArray(source)) return [];
+  const seen = new Map<string, SimpleSkill>();
+  for (const entry of source) {
+    const normalized = normalizeSkillEntry(entry);
+    if (!normalized) continue;
+    const key = normalized.name.toLowerCase();
+    seen.set(key, normalized);
+  }
+  return Array.from(seen.values());
+}
+
+function categorizeSentence(categories: string[]): string {
+  if (!categories || categories.length === 0) return '';
+  return ` (${formatList(categories)})`;
+}
+
 function buildFieldDescription(segments: string[]): string {
   if (segments.length === 0) return 'value';
   const segmentToPhrase = (seg: string, idx: number) => {
@@ -205,6 +246,41 @@ function buildUserMessages(args: {
     }
     case './step5-section-hub.yaml': {
       messages = ['Selected the next resume section to continue.'];
+      break;
+    }
+    case '@resume/skills': {
+      const beforeSkills = normalizeSkillsCollection(beforeDoc?.resume?.skills ?? []);
+      const afterSkills = normalizeSkillsCollection(afterDoc?.resume?.skills ?? []);
+      const beforeMap = new Map(beforeSkills.map(skill => [skill.name.toLowerCase(), skill]));
+      const afterMap = new Map(afterSkills.map(skill => [skill.name.toLowerCase(), skill]));
+      const changes: string[] = [];
+
+      for (const [key, skill] of afterMap.entries()) {
+        const prev = beforeMap.get(key);
+        if (!prev) {
+          const categoryNote = categorizeSentence(skill.categories);
+          changes.push(`Added skill ${skill.name}${categoryNote}.`);
+          continue;
+        }
+        const addedCats = skill.categories.filter(cat => !prev.categories.some(prevCat => prevCat.toLowerCase() === cat.toLowerCase()));
+        const removedCats = prev.categories.filter(cat => !skill.categories.some(nextCat => nextCat.toLowerCase() === cat.toLowerCase()));
+        if (addedCats.length === 0 && removedCats.length === 0) continue;
+        if (addedCats.length > 0) {
+          changes.push(`Added categories ${formatList(addedCats)} to ${skill.name}.`);
+        }
+        if (removedCats.length > 0) {
+          changes.push(`Removed categories ${formatList(removedCats)} from ${skill.name}.`);
+        }
+      }
+
+      for (const [key, skill] of beforeMap.entries()) {
+        if (!afterMap.has(key)) {
+          const categoryNote = categorizeSentence(skill.categories);
+          changes.push(`Removed skill ${skill.name}${categoryNote}.`);
+        }
+      }
+
+      messages = changes.length > 0 ? changes : ['Reviewed skills.'];
       break;
     }
     case '@resume/experience': {

@@ -185,24 +185,6 @@ export function createResumeActions(args: {
     }
 
     if (def.kind === 'skills') {
-      actions['resume.skills.save'] = (ctx) => {
-        const raw = String(ctx.vars.skillsInput ?? '').trim();
-        const values = raw === ''
-          ? []
-          : raw
-              .split(/[,\n]/)
-              .map(token => token.trim())
-              .filter(Boolean);
-        const exists = ctx.helpers.get(ctx.doc, basePath) !== undefined;
-        writeSession(ctx, (draft) => {
-          draft.activeSection = def.key;
-          if (draft.statuses[def.key] !== 'done') {
-            draft.statuses[def.key] = 'in-progress';
-          }
-        });
-        return [{ op: exists ? 'replace' : 'add', path: basePath, value: values }];
-      };
-
       actions['resume.skills.finish'] = (ctx) => {
         const ops = commitWorkingValue(ctx, basePath, []);
         writeSession(ctx, (draft) => {
@@ -378,32 +360,23 @@ function buildSkillsStep(def: ResumeSectionDefinition): LoadedStep {
     name: 'Resume — Skills',
     widgets: [
       {
-        id: 'skillsPreview',
+        id: 'skillsEditor',
         type: 'list',
-        label: 'Current Skills',
+        label: 'Skills',
         binding: { path: basePtr },
+        options: {
+          layout: 'skill-pills',
+          suggestions: ['Languages', 'Frameworks', 'Tools', 'Soft Skills'],
+        },
         item: {
           expandable: false,
-          fields: [
-            { id: 'skill', type: 'text', label: 'Skill', binding: { path: '' }, options: { readOnly: true } },
-          ],
+          fields: [],
         },
-      },
-      {
-        id: 'skillsInput',
-        type: 'text',
-        label: 'Add or replace skills (comma or newline separated)',
-      },
-      {
-        id: 'saveSkills',
-        type: 'action',
-        label: 'Save skills list',
-        options: { action: 'resume.skills.save' },
       },
     ],
     layout: {
       type: 'vertical',
-      children: ['skillsPreview', 'skillsInput', 'saveSkills'],
+      children: ['skillsEditor'],
     },
     meta: {
       commitAction: 'resume.skills.finish',

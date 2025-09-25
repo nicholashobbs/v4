@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   Flux4BotsProps, Widget, TextWidget, SelectWidget, ListWidget,
-  FieldPickerWidget, ActionWidget, Operation, CardCollectionOptions
+  FieldPickerWidget, ActionWidget, Operation, CardCollectionOptions, SkillPillOptions
 } from '../types';
 import { getAtPointer, setAtPointer, encodePointerSegment, joinPointer } from '../core/pointer';
 import { resolveBindingPath } from '../core/binding';
@@ -10,6 +10,7 @@ import { compareDocsToPatch, applyPatch } from '../core/patch';
 import { validateTemplate } from '../core/validate';
 import { ChipSelect } from './ChipSelect';
 import CollectionCardEditor from './CollectionCardEditor';
+import { SkillPillEditor } from './SkillPillEditor';
 import { sanitizeCustomFieldLabels } from '../utils/customFields';
 
 type NormalizedOption = { value: string; label: string };
@@ -35,6 +36,11 @@ const palette = {
   warningBg: 'color-mix(in srgb, var(--f4b-warning) 18%, transparent)',
   codeBg: 'var(--f4b-code-bg)',
 };
+
+function humanizeKey(text: string): string {
+  const cleaned = (text ?? '').replace(/[_-]+/g, ' ');
+  return cleaned.replace(/\b\w/g, char => char.toUpperCase()).trim() || text;
+}
 
 function isTextEntryElement(element: HTMLElement | null): boolean {
   if (!element) return false;
@@ -726,6 +732,18 @@ export function Flux4Bots(props: Flux4BotsProps) {
         );
       }
 
+      if ((listOptions as SkillPillOptions | undefined)?.layout === 'skill-pills') {
+        const pillOptions = listOptions as SkillPillOptions | undefined;
+        return (
+          <SkillPillEditor
+            label={w.label}
+            skills={items}
+            persist={(updater) => persistCollection(arrPath, updater)}
+            options={pillOptions}
+          />
+        );
+      }
+
       return (
         <div style={{ marginBottom: 12 }}>
           {w.label ? <h4 style={{ margin: '8px 0' }}>{w.label}</h4> : null}
@@ -825,12 +843,14 @@ export function Flux4Bots(props: Flux4BotsProps) {
       const expandable = !!w.item.expandable;
 
       return (
-        <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 10 }}>
           {w.label ? <h4 style={{ margin: '8px 0' }}>{w.label}</h4> : null}
           {showKeys.length === 0 && <div style={{ opacity: 0.7 }}>No items.</div>}
 
           {showKeys.map((k) => {
             const base = `${basePath}/${encodePointerSegment(k)}`;
+            const displayLabel = humanizeKey(k);
+
             return (
               <div
                 key={base}
@@ -838,74 +858,72 @@ export function Flux4Bots(props: Flux4BotsProps) {
                   border: palette.borderMuted,
                   background: palette.surfaceSoft,
                   borderRadius: 8,
-                  padding: 10,
-                  marginBottom: 8,
+                  padding: '8px 12px',
+                  marginBottom: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
                 }}
               >
-                {!expandable ? null : (
-                  <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 6 }}>
-                    key: {k} • base: {base}
-                  </div>
-                )}
-                {w.item.fields.map((f) => {
-                  const fAny = f as any;
-                  const rel = fAny.binding?.path ?? '';
-                  const fieldPath = rel === '' ? base : joinPointer(base, rel);
-                  const asText = fAny.type === 'text';
-                  const asSelect = fAny.type === 'select';
-                  const label = fAny.label;
+                <div style={{ width: 120, minWidth: 120, fontWeight: 600 }}>{displayLabel}</div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {w.item.fields.map((f) => {
+                    const fAny = f as any;
+                    const rel = fAny.binding?.path ?? '';
+                    const fieldPath = rel === '' ? base : joinPointer(base, rel);
+                    const asText = fAny.type === 'text';
+                    const asSelect = fAny.type === 'select';
+                    const rawLabel = fAny.label;
+                    const showLabel = rawLabel && rawLabel !== 'Value';
 
-                  const value = getAtPointer(working, fieldPath);
-                  if (asText) {
-                    if (fAny.options?.readOnly) {
+                    const value = getAtPointer(working, fieldPath);
+                    if (asText) {
+                      if (fAny.options?.readOnly) {
+                        return (
+                          <div key={fieldPath} style={{ fontSize: 14 }}>
+                            {String(value ?? '')}
+                          </div>
+                        );
+                      }
                       return (
-                        <div key={fieldPath} style={{ marginBottom: 8 }}>
-                          {label ? <div style={{ fontWeight: 600 }}>{label}</div> : null}
-                          <div>{String(value ?? '')}</div>
-                          <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath} (read-only)</div>
+                        <div key={fieldPath} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {showLabel ? <span style={{ fontWeight: 600 }}>{rawLabel}</span> : null}
+                          <input
+                            value={String(value ?? '')}
+                            onChange={e => {
+                              const next = JSON.parse(JSON.stringify(working));
+                              setAtPointer(next, fieldPath, e.target.value);
+                              setWorking(next);
+                            }}
+                            style={{ flex: 1, padding: '6px 8px', border: palette.borderMuted, borderRadius: 6 }}
+                            data-f4b-focusable="true"
+                          />
                         </div>
                       );
                     }
-                    return (
-                      <div key={fieldPath} style={{ marginBottom: 8 }}>
-                        {label ? <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>{label}</label> : null}
-                        <input
-                          value={String(value ?? '')}
-                          onChange={e => {
-                            const next = JSON.parse(JSON.stringify(working));
-                            setAtPointer(next, fieldPath, e.target.value);
-                            setWorking(next);
-                          }}
-                          style={{ padding: 8, width: 360 }}
-                          data-f4b-focusable="true"
-                        />
-                        <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath}</div>
-                      </div>
-                    );
-                  }
-                 if (asSelect) {
-                    const selectOpts = normalizeSelectValues(fAny.options?.values);
-                    return (
-                      <div key={fieldPath} style={{ marginBottom: 8 }}>
-                        {label ? <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>{label}</label> : null}
-                        <select
-                          value={String(value ?? '')}
-                          onChange={e => {
-                            const next = JSON.parse(JSON.stringify(working));
-                            setAtPointer(next, fieldPath, e.target.value);
-                            setWorking(next);
-                          }}
-                          style={{ padding: 8, width: 360 }}
-                          data-f4b-focusable="true"
-                        >
-                          {selectOpts.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                        </select>
-                        <div style={{ fontSize: 12, opacity: 0.6 }}>{fieldPath}</div>
-                      </div>
-                    );
-                  }
-                  return <div key={fieldPath} style={{ color: palette.warning }}>Unsupported item field</div>;
-                })}
+                    if (asSelect) {
+                      const selectOpts = normalizeSelectValues(fAny.options?.values);
+                      return (
+                        <div key={fieldPath} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {showLabel ? <span style={{ fontWeight: 600 }}>{rawLabel}</span> : null}
+                          <select
+                            value={String(value ?? '')}
+                            onChange={e => {
+                              const next = JSON.parse(JSON.stringify(working));
+                              setAtPointer(next, fieldPath, e.target.value);
+                              setWorking(next);
+                            }}
+                            style={{ flex: 1, padding: '6px 8px', border: palette.borderMuted, borderRadius: 6 }}
+                            data-f4b-focusable="true"
+                          >
+                            {selectOpts.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                          </select>
+                        </div>
+                      );
+                    }
+                    return <div key={fieldPath} style={{ color: palette.warning }}>Unsupported item field</div>;
+                  })}
+                </div>
               </div>
             );
           })}

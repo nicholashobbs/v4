@@ -344,7 +344,6 @@ export default function CollectionCardEditor(props: CardCollectionEditorProps) {
 
   return (
     <div style={{ marginBottom: 16 }}>
-      {label ? <h4 style={{ margin: '8px 0' }}>{label}</h4> : null}
       <div
         style={{
           display: 'flex',
@@ -355,107 +354,17 @@ export default function CollectionCardEditor(props: CardCollectionEditorProps) {
       >
         <div
           style={{
-            flex: '1 1 320px',
-            minWidth: 280,
-            maxHeight: 360,
-            overflowY: 'auto',
-            paddingRight: 4,
-          }}
-        >
-          {displayEntries.length === 0 && (
-            <div style={{ opacity: 0.7 }}>No entries yet.</div>
-          )}
-          {displayEntries.map(({ entry, originalIndex }) => {
-            const formValues = formStateFromEntry(entry, fieldMap, bulletsFieldId);
-            const title = typeof formValues[titleFieldId] === 'string' ? String(formValues[titleFieldId]) : '';
-            const subtitleField = options.card?.subtitleField;
-            const subtitle = subtitleField ? String(formValues[subtitleField] ?? '') : '';
-            const metaValues = options.card?.metaFields ?? [];
-            const meta = metaValues
-              .map(fieldId => String(formValues[fieldId] ?? ''))
-              .filter(Boolean)
-              .join(' • ');
-            const dateRange = mergeDateRange(formValues as Record<string, string>, options.card);
-            const bullets = bulletsFieldId ? normalizeBullets(formValues[bulletsFieldId]) : [];
-            const isActive = mode === 'edit' && originalIndex === activeIndex;
-
-            return (
-              <div
-                key={originalIndex}
-                style={{
-                  border: palette.borderMuted,
-                  background: isActive ? 'color-mix(in srgb, var(--f4b-accent) 12%, transparent)' : palette.surfaceSoft,
-                  borderRadius: 10,
-                  padding: '12px 14px',
-                  marginBottom: 12,
-                  boxShadow: isActive ? '0 0 0 1px var(--f4b-accent)' : 'none',
-                  cursor: 'pointer',
-                }}
-                onClick={() => enterEdit(originalIndex)}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600 }}>{title || 'Untitled entry'}</div>
-                    {subtitle && <div style={{ fontSize: 13, opacity: 0.75 }}>{subtitle}</div>}
-                    {meta && <div style={{ fontSize: 12, opacity: 0.65, marginTop: 4 }}>{meta}</div>}
-                    {dateRange && <div style={{ fontSize: 12, opacity: 0.65, marginTop: 2 }}>{dateRange}</div>}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(originalIndex);
-                    }}
-                    disabled={pending === 'saving'}
-                    style={{
-                      border: palette.borderMuted,
-                      background: 'transparent',
-                      borderRadius: 999,
-                      width: 28,
-                      height: 28,
-                      fontWeight: 600,
-                      cursor: pending === 'saving' ? 'not-allowed' : 'pointer',
-                    }}
-                    title="Delete"
-                  >
-                    –
-                  </button>
-                </div>
-                {isActive && (
-                  <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: palette.textSecondary }}>
-                    Editing…
-                  </div>
-                )}
-                {bullets.length > 0 && (
-                  <ul style={{ marginTop: 12, paddingLeft: 18, maxHeight: 120, overflowY: 'auto' }}>
-                    {bullets.map((bullet, bulletIdx) => (
-                      <li key={bulletIdx} style={{ marginBottom: 4, fontSize: 13 }}>
-                        {bullet}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <div
-          style={{
-            flex: '1 1 320px',
-            minWidth: 280,
+            flex: '1 1 360px',
+            minWidth: 300,
             border: palette.border,
             background: palette.surfaceMuted,
             borderRadius: 12,
-            padding: '16px 18px',
+            padding: '14px 16px',
             position: 'relative',
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>
-              {mode === 'add' ? 'Add entry' : 'Edit entry'}
-            </div>
-            {mode === 'edit' && (
+          {mode === 'edit' && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
               <button
                 type="button"
                 onClick={resetForm}
@@ -464,14 +373,14 @@ export default function CollectionCardEditor(props: CardCollectionEditorProps) {
               >
                 Cancel
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: 12,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
             }}
           >
             {orderedFields.map((widget) => {
@@ -483,9 +392,9 @@ export default function CollectionCardEditor(props: CardCollectionEditorProps) {
               if (isBullet) {
                 const bulletValues = Array.isArray(value) ? (value as string[]) : [];
                 return (
-                  <div key={fieldId} style={{ gridColumn: '1 / -1' }}>
-                    <div style={{ fontWeight: 600, marginBottom: 6 }}>{labelText}</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div key={fieldId} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                    <div style={{ width: 130, minWidth: 130, fontWeight: 600, paddingTop: 6 }}>{labelText}</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
                       {bulletValues.map((bullet, bulletIdx) => (
                         <div key={bulletIdx} style={{ display: 'flex', gap: 8 }}>
                           <input
@@ -493,7 +402,7 @@ export default function CollectionCardEditor(props: CardCollectionEditorProps) {
                             value={bullet}
                             onChange={e => updateBullet(bulletIdx, e.target.value)}
                             placeholder={`Bullet ${bulletIdx + 1}`}
-                            style={{ flex: 1, padding: '8px 10px', border: palette.borderMuted, borderRadius: 6 }}
+                            style={{ flex: 1, padding: '6px 8px', border: palette.borderMuted, borderRadius: 6 }}
                             data-f4b-focusable="true"
                           />
                           <button
@@ -519,7 +428,7 @@ export default function CollectionCardEditor(props: CardCollectionEditorProps) {
                           border: palette.borderMuted,
                           background: 'transparent',
                           borderRadius: 999,
-                          padding: '6px 12px',
+                          padding: '4px 10px',
                           fontWeight: 600,
                         }}
                       >
@@ -531,23 +440,25 @@ export default function CollectionCardEditor(props: CardCollectionEditorProps) {
               }
 
               return (
-                <label key={fieldId} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <span style={{ fontWeight: 600 }}>{labelText}</span>
-                  <input
-                    value={typeof value === 'string' ? value : ''}
-                    onChange={e => updateField(fieldId, e.target.value)}
-                    style={{ padding: '8px 10px', border: palette.borderMuted, borderRadius: 6 }}
-                    data-f4b-focusable="true"
-                  />
-                  {errors?.field === fieldId && (
-                    <span style={{ color: 'var(--f4b-warning)', fontSize: 12 }}>{errors.message}</span>
-                  )}
-                </label>
+                <div key={fieldId} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 130, minWidth: 130, fontWeight: 600 }}>{labelText}</div>
+                  <div style={{ flex: 1 }}>
+                    <input
+                      value={typeof value === 'string' ? value : ''}
+                      onChange={e => updateField(fieldId, e.target.value)}
+                      style={{ width: '100%', padding: '6px 8px', border: palette.borderMuted, borderRadius: 6 }}
+                      data-f4b-focusable="true"
+                    />
+                    {errors?.field === fieldId && (
+                      <div style={{ color: 'var(--f4b-warning)', fontSize: 12, marginTop: 4 }}>{errors.message}</div>
+                    )}
+                  </div>
+                </div>
               );
             })}
           </div>
 
-          <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
+          <div style={{ marginTop: 14, display: 'flex', gap: 12 }}>
             {mode === 'add' ? (
               <button
                 type="button"
@@ -584,6 +495,94 @@ export default function CollectionCardEditor(props: CardCollectionEditorProps) {
               </button>
             )}
           </div>
+        </div>
+
+        <div
+          style={{
+            flex: '1 1 360px',
+            minWidth: 300,
+            maxHeight: 360,
+            overflowY: 'auto',
+            paddingRight: 4,
+          }}
+        >
+          {label ? <h4 style={{ margin: '0 0 8px' }}>{label}</h4> : null}
+          {displayEntries.length === 0 && (
+            <div style={{ opacity: 0.7 }}>No entries yet.</div>
+          )}
+          {displayEntries.map(({ entry, originalIndex }) => {
+            const formValues = formStateFromEntry(entry, fieldMap, bulletsFieldId);
+            const title = typeof formValues[titleFieldId] === 'string' ? String(formValues[titleFieldId]) : '';
+            const subtitleField = options.card?.subtitleField;
+            const subtitle = subtitleField ? String(formValues[subtitleField] ?? '') : '';
+            const metaValues = options.card?.metaFields ?? [];
+            const meta = metaValues
+              .map(fieldId => String(formValues[fieldId] ?? ''))
+              .filter(Boolean)
+              .join(' • ');
+            const dateRange = mergeDateRange(formValues as Record<string, string>, options.card);
+            const bullets = bulletsFieldId ? normalizeBullets(formValues[bulletsFieldId]) : [];
+            const isActive = mode === 'edit' && originalIndex === activeIndex;
+
+            return (
+              <div
+                key={originalIndex}
+                style={{
+                  border: palette.borderMuted,
+                  background: isActive ? 'color-mix(in srgb, var(--f4b-accent) 12%, transparent)' : palette.surfaceSoft,
+                  borderRadius: 10,
+                  padding: '12px 14px',
+                  marginBottom: 10,
+                  boxShadow: isActive ? '0 0 0 1px var(--f4b-accent)' : 'none',
+                  cursor: 'pointer',
+                }}
+                onClick={() => enterEdit(originalIndex)}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600 }}>{title || 'Untitled entry'}</div>
+                    {subtitle && <div style={{ fontSize: 13, opacity: 0.75 }}>{subtitle}</div>}
+                    {meta && <div style={{ fontSize: 12, opacity: 0.65, marginTop: 4 }}>{meta}</div>}
+                    {dateRange && <div style={{ fontSize: 12, opacity: 0.65, marginTop: 2 }}>{dateRange}</div>}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(originalIndex);
+                    }}
+                    disabled={pending === 'saving'}
+                    style={{
+                      border: palette.borderMuted,
+                      background: 'transparent',
+                      borderRadius: 999,
+                      width: 28,
+                      height: 28,
+                      fontWeight: 600,
+                      cursor: pending === 'saving' ? 'not-allowed' : 'pointer',
+                    }}
+                    title="Delete"
+                  >
+                    –
+                  </button>
+                </div>
+                {isActive && (
+                  <div style={{ marginTop: 6, fontSize: 12, fontWeight: 600, color: palette.textSecondary }}>
+                    Editing…
+                  </div>
+                )}
+                {bullets.length > 0 && (
+                  <ul style={{ marginTop: 10, paddingLeft: 18, maxHeight: 120, overflowY: 'auto' }}>
+                    {bullets.map((bullet, bulletIdx) => (
+                      <li key={bulletIdx} style={{ marginBottom: 4, fontSize: 13 }}>
+                        {bullet}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
