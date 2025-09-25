@@ -349,16 +349,13 @@ function buildCollectionStep(def: ResumeSectionDefinition): LoadedStep {
         label: `Add another ${def.label.toLowerCase()} entry`,
         options: { action: `resume.collection.add.${def.key}` },
       },
-      {
-        id: 'done',
-        type: 'action',
-        label: 'Done',
-        options: { action: `resume.collection.finish.${def.key}` },
-      },
     ],
     layout: {
       type: 'vertical',
-      children: ['entries', 'add', 'done'],
+      children: ['entries', 'add'],
+    },
+    meta: {
+      commitAction: `resume.collection.finish.${def.key}`,
     },
   };
 
@@ -398,16 +395,13 @@ function buildSkillsStep(def: ResumeSectionDefinition): LoadedStep {
         label: 'Save skills list',
         options: { action: 'resume.skills.save' },
       },
-      {
-        id: 'done',
-        type: 'action',
-        label: 'Done',
-        options: { action: 'resume.skills.finish' },
-      },
     ],
     layout: {
       type: 'vertical',
-      children: ['skillsPreview', 'skillsInput', 'saveSkills', 'done'],
+      children: ['skillsPreview', 'skillsInput', 'saveSkills'],
+    },
+    meta: {
+      commitAction: 'resume.skills.finish',
     },
   };
 
@@ -430,16 +424,13 @@ function buildSummaryStep(def: ResumeSectionDefinition): LoadedStep {
         label: 'Summary',
         binding: { path: basePtr },
       },
-      {
-        id: 'done',
-        type: 'action',
-        label: 'Done',
-        options: { action: 'resume.summary.finish' },
-      },
     ],
     layout: {
       type: 'vertical',
-      children: ['summary', 'done'],
+      children: ['summary'],
+    },
+    meta: {
+      commitAction: 'resume.summary.finish',
     },
   };
 

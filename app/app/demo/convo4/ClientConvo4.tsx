@@ -108,7 +108,10 @@ export default function ClientConvo4({
         .replace(/^-+|-+$/g, '') || 'field';
     };
 
-    const uniqueContactKey = (ctx: Parameters<ActionRegistry[string]>[0], base: string) => {
+    const CUSTOM_FIELD_STATE = 'contact.customFieldSlug';
+
+    const uniqueContactKey = (ctx: Parameters<ActionRegistry[string]>[0], base: string, prefer?: string | null) => {
+      if (prefer) return prefer;
       const encode = ctx.helpers.encode;
       let slug = base || 'field';
       let counter = 2;
@@ -160,14 +163,33 @@ export default function ClientConvo4({
           }
         }
 
+        const prevSlug = ctx.runtime.getState?.(CUSTOM_FIELD_STATE) as string | undefined;
+        if (!selected.includes('custom') && prevSlug) {
+          const prevPath = `/contact/${ctx.helpers.encode(prevSlug)}`;
+          if (ctx.helpers.get(ctx.doc, prevPath) !== undefined) {
+            ops.push({ op: 'remove', path: prevPath });
+          }
+          ctx.runtime.setState?.(CUSTOM_FIELD_STATE, undefined as any);
+        }
+
         if (selected.includes('custom')) {
           const label = String(ctx.vars.customContactField ?? '').trim();
+          const baseSlug = slugify(label);
+
+          if (prevSlug && (!label || baseSlug !== prevSlug)) {
+            const prevPath = `/contact/${ctx.helpers.encode(prevSlug)}`;
+            if (ctx.helpers.get(ctx.doc, prevPath) !== undefined) {
+              ops.push({ op: 'remove', path: prevPath });
+            }
+            ctx.runtime.setState?.(CUSTOM_FIELD_STATE, undefined as any);
+          }
+
           if (label) {
-            const baseSlug = slugify(label);
-            const slug = uniqueContactKey(ctx, baseSlug);
-            const path = `/contact/${encode(slug)}`;
+            const slug = uniqueContactKey(ctx, baseSlug, prevSlug);
+            const path = `/contact/${ctx.helpers.encode(slug)}`;
             const exists = ctx.helpers.get(ctx.doc, path) !== undefined;
             ops.push({ op: exists ? 'replace' : 'add', path, value: '' });
+            ctx.runtime.setState?.(CUSTOM_FIELD_STATE, slug);
           }
         }
 

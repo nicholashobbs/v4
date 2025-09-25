@@ -107,26 +107,34 @@ export function Flux4Bots(props: Flux4BotsProps) {
   async function onCommit() {
     if (!working || !canCommit) return;
 
-    let nextDoc = JSON.parse(JSON.stringify(working));
-    if (patch.length > 0) {
-      const updated = await store.applyPatch(patch);
-      nextDoc = JSON.parse(JSON.stringify(updated));
-    }
+    const baseOps = patch.slice();
 
-    let finalDoc = nextDoc;
-    if (commitActionName) {
-      const result = applyAction(commitActionName, {
-        doc: finalDoc,
-        working: finalDoc,
-        varsOverride: vars,
-      });
-      if (result) {
-        finalDoc = JSON.parse(JSON.stringify(result));
+    let commitOps: Operation[] = [];
+    if (commitActionName && actions?.[commitActionName]) {
+      try {
+        commitOps = actions[commitActionName]({
+          doc: original,
+          working,
+          vars,
+          helpers: { encode: encodePointerSegment, get: getAtPointer },
+          runtime,
+        }) ?? [];
+      } catch (err) {
+        console.error(`commit action "${commitActionName}" failed`, err);
+        commitOps = [];
       }
     }
 
-    setOriginal(JSON.parse(JSON.stringify(finalDoc)));
-    setWorking(JSON.parse(JSON.stringify(finalDoc)));
+    const combinedOps = [...baseOps, ...commitOps];
+    if (combinedOps.length === 0) {
+      setExplicitOps([]);
+      return;
+    }
+
+    const updated = await store.applyPatch(combinedOps);
+    const cloned = JSON.parse(JSON.stringify(updated));
+    setOriginal(cloned);
+    setWorking(JSON.parse(JSON.stringify(cloned)));
     setExplicitOps([]);
   }
 
@@ -753,19 +761,44 @@ export function Flux4Bots(props: Flux4BotsProps) {
                 Pending Patch
                 <span style={{ fontWeight: 400, opacity: 0.7 }}>{mode}</span>
               </div>
-              <pre
-                style={{
-                  margin: 0,
-                  padding: 12,
-                  background: palette.codeBg,
-                  color: 'var(--f4b-text-secondary)',
-                  maxHeight: 'calc(45vh - 44px)',
-                  overflow: 'auto',
-                  fontSize: 12,
-                }}
-              >
-                {JSON.stringify(patch, null, 2)}
-              </pre>
+              <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 'calc(45vh - 44px)' }}>
+                <div style={{ padding: '12px 12px 0', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4, opacity: 0.7 }}>
+                  Working document
+                </div>
+                <pre
+                  style={{
+                    margin: 0,
+                    padding: '8px 12px 12px',
+                    background: palette.codeBg,
+                    color: 'var(--f4b-text-secondary)',
+                    fontSize: 12,
+                    flex: 1,
+                    overflow: 'auto',
+                  }}
+                >
+                  {JSON.stringify(working, null, 2)}
+                </pre>
+                {patch.length > 0 && (
+                  <>
+                    <div style={{ padding: '12px 12px 0', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4, opacity: 0.7 }}>
+                      Pending patch ({patch.length})
+                    </div>
+                    <pre
+                      style={{
+                        margin: 0,
+                        padding: '8px 12px 12px',
+                        background: palette.codeBg,
+                        color: 'var(--f4b-text-secondary)',
+                        fontSize: 12,
+                        maxHeight: 160,
+                        overflow: 'auto',
+                      }}
+                    >
+                      {JSON.stringify(patch, null, 2)}
+                    </pre>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </>
