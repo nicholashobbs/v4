@@ -1,14 +1,15 @@
 'use client';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   Flux4BotsProps, Widget, TextWidget, SelectWidget, ListWidget,
-  FieldPickerWidget, ActionWidget, Operation
+  FieldPickerWidget, ActionWidget, Operation, CardCollectionOptions
 } from '../types';
 import { getAtPointer, setAtPointer, encodePointerSegment, joinPointer } from '../core/pointer';
 import { resolveBindingPath } from '../core/binding';
 import { compareDocsToPatch, applyPatch } from '../core/patch';
 import { validateTemplate } from '../core/validate';
 import { ChipSelect } from './ChipSelect';
+import CollectionCardEditor from './CollectionCardEditor';
 
 type NormalizedOption = { value: string; label: string };
 
@@ -78,7 +79,8 @@ export function Flux4Bots(props: Flux4BotsProps) {
   }, [original, working, explicitOps, mode]);
 
   const commitMeta = template.meta ?? {};
-  const commitActionName = commitMeta.commitAction;
+  const autoCommit = Boolean(commitMeta.autoCommit);
+  const commitActionName = autoCommit ? undefined : commitMeta.commitAction;
   const commitRequires = commitActionName
     ? Array.isArray(commitMeta.commitRequiresVar)
       ? commitMeta.commitRequiresVar
@@ -88,24 +90,25 @@ export function Flux4Bots(props: Flux4BotsProps) {
     : [];
 
   const hasChanges = patch.length > 0;
-
-  const commitReady = commitActionName
-    ? (commitRequires.length === 0
+  const commitReady = !commitActionName
+    ? false
+    : (commitRequires.length === 0
         ? true
         : commitRequires.every((id) => {
             const val = vars[id];
             if (Array.isArray(val)) return val.length > 0;
             if (typeof val === 'string') return val.trim().length > 0;
             return Boolean(val);
-          }))
-    : false;
+          }));
 
-  const canCommit = commitActionName
-    ? (hasChanges ? true : commitReady)
-    : hasChanges;
+  const canCommit = autoCommit
+    ? false
+    : commitActionName
+      ? (hasChanges ? true : commitReady)
+      : hasChanges;
 
   async function onCommit() {
-    if (!working || !canCommit) return;
+    if (autoCommit || !working || !canCommit) return;
 
     const baseOps = patch.slice();
 
@@ -137,6 +140,32 @@ export function Flux4Bots(props: Flux4BotsProps) {
     setWorking(JSON.parse(JSON.stringify(cloned)));
     setExplicitOps([]);
   }
+
+  const persistCollection = useCallback(async (
+    path: string,
+    updater: (current: any[]) => any[]
+  ) => {
+    const source = working ?? original;
+    if (!source) throw new Error('Document not ready');
+    const currentValue = getAtPointer(source, path);
+    const baseArray: any[] = Array.isArray(currentValue) ? currentValue : [];
+    const draft = JSON.parse(JSON.stringify(baseArray));
+    const updatedArray = updater(draft) ?? draft;
+    const normalized = Array.isArray(updatedArray) ? updatedArray : [];
+    const value = JSON.parse(JSON.stringify(normalized));
+    const exists = currentValue !== undefined;
+    const op: Operation = { op: exists ? 'replace' : 'add', path, value };
+    try {
+      const updated = await store.applyPatch([op]);
+      const cloned = JSON.parse(JSON.stringify(updated));
+      setOriginal(cloned);
+      setWorking(JSON.parse(JSON.stringify(cloned)));
+      setExplicitOps([]);
+    } catch (err) {
+      console.error('Failed to persist collection changes', err);
+      throw err;
+    }
+  }, [store, working, original]);
 
   function setVar(id: string, value: any) {
     setVars(prev => ({ ...prev, [id]: value }));
@@ -329,6 +358,19 @@ export function Flux4Bots(props: Flux4BotsProps) {
       const arr = getAtPointer(working, arrPath);
       const items = Array.isArray(arr) ? arr : [];
       const expandable = !!w.item.expandable;
+
+      const listOptions = anyW.options as CardCollectionOptions | undefined;
+      if (listOptions?.layout === 'card-collection') {
+        return (
+          <CollectionCardEditor
+            label={w.label}
+            entries={items}
+            itemSpec={w.item}
+            options={listOptions}
+            persist={(updater) => persistCollection(arrPath, updater)}
+          />
+        );
+      }
 
       return (
         <div style={{ marginBottom: 12 }}>
@@ -699,23 +741,25 @@ export function Flux4Bots(props: Flux4BotsProps) {
                 >
                   json
                 </button>
-                <button
-                  type="button"
-                  onClick={onCommit}
-                  disabled={!canCommit}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: 6,
-                    border: 'none',
-                    background: canCommit ? 'var(--f4b-accent)' : 'var(--f4b-border-muted)',
-                    color: canCommit ? '#0f1422' : 'var(--f4b-text-muted)',
-                    fontWeight: 600,
-                    fontSize: 14,
-                    cursor: canCommit ? 'pointer' : 'not-allowed',
-                  }}
-                >
-                  ↑
-                </button>
+                {!autoCommit && (
+                  <button
+                    type="button"
+                    onClick={onCommit}
+                    disabled={!canCommit}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: 6,
+                      border: 'none',
+                      background: canCommit ? 'var(--f4b-accent)' : 'var(--f4b-border-muted)',
+                      color: canCommit ? '#0f1422' : 'var(--f4b-text-muted)',
+                      fontWeight: 600,
+                      fontSize: 14,
+                      cursor: canCommit ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    ↑
+                  </button>
+                )}
               </div>
             </div>
             {template.layout.type !== 'vertical'

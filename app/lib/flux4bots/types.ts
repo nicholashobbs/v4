@@ -35,21 +35,34 @@ export type SelectWidget = {
   binding?: Binding; // optional: if omitted, selection captured in vars[id]
   options?: SelectOptions;
 };
+export type CardCollectionOptions = {
+  layout: 'card-collection';
+  card?: {
+    titleField: string;
+    subtitleField?: string;
+    metaFields?: string[];
+    dateRangeFields?: { start?: string; end?: string };
+  };
+  formOrder?: string[];
+  bulletsField?: string;
+};
+
+export type ListWidgetOptions = CardCollectionOptions | Record<string, unknown>;
+
 export type ListItemSpec = {
   expandable?: boolean;
   fields: (TextWidget | SelectWidget)[];
 };
+
+type ListWidgetBase = {
+  id: string; type: 'list'; label?: string;
+  item: ListItemSpec;
+  options?: ListWidgetOptions;
+};
+
 export type ListWidget =
-  | {
-      id: string; type: 'list'; label?: string;
-      binding: Binding;            // existing array-driven list
-      item: ListItemSpec;
-    }
-  | {
-      id: string; type: 'list'; label?: string;
-      source: KeysSource;          // NEW: keys-driven list
-      item: ListItemSpec;
-    };
+  | (ListWidgetBase & { binding: Binding })
+  | (ListWidgetBase & { source: KeysSource });
 export type FieldPickerWidget = {
   id: string; type: 'field-picker'; label?: string;
   binding?: Binding; // optional: write result to a binding (string or array)
@@ -65,6 +78,7 @@ export type Widget = TextWidget | SelectWidget | ListWidget | FieldPickerWidget 
 export type TemplateMeta = {
   commitAction?: string;
   commitRequiresVar?: string | string[];
+  autoCommit?: boolean;
 };
 
 export type Template = {

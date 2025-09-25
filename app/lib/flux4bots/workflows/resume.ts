@@ -266,7 +266,7 @@ function blankCollectionEntry() {
     location: '',
     startDate: '',
     endDate: '',
-    bullets: '',
+    bullets: [],
   };
 }
 
@@ -331,6 +331,17 @@ function buildCollectionStep(def: ResumeSectionDefinition): LoadedStep {
         type: 'list',
         label: `${def.label} Entries`,
         binding: { path: basePtr },
+        options: {
+          layout: 'card-collection',
+          card: {
+            titleField: 'title',
+            subtitleField: 'institution',
+            metaFields: ['location'],
+            dateRangeFields: { start: 'startDate', end: 'endDate' },
+          },
+          formOrder: ['title', 'institution', 'location', 'startDate', 'endDate', 'bullets'],
+          bulletsField: 'bullets',
+        },
         item: {
           expandable: true,
           fields: [
@@ -339,23 +350,17 @@ function buildCollectionStep(def: ResumeSectionDefinition): LoadedStep {
             { id: 'location', type: 'text', label: 'Location', binding: { path: '/location' } },
             { id: 'startDate', type: 'text', label: 'Start Date', binding: { path: '/startDate' } },
             { id: 'endDate', type: 'text', label: 'End Date', binding: { path: '/endDate' } },
-            { id: 'bullets', type: 'text', label: 'Bullets (comma or newline separated)', binding: { path: '/bullets' } },
+            { id: 'bullets', type: 'text', label: 'Bullets', binding: { path: '/bullets' } },
           ],
         },
-      },
-      {
-        id: 'add',
-        type: 'action',
-        label: `Add another ${def.label.toLowerCase()} entry`,
-        options: { action: `resume.collection.add.${def.key}` },
       },
     ],
     layout: {
       type: 'vertical',
-      children: ['entries', 'add'],
+      children: ['entries'],
     },
     meta: {
-      commitAction: `resume.collection.finish.${def.key}`,
+      autoCommit: true,
     },
   };
 

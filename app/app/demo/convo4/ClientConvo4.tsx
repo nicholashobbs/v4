@@ -258,6 +258,7 @@ export default function ClientConvo4({
   }), []);
 
   const curStep = engine.currentStep;
+  const stepAutoCommit = curStep?.template.meta?.autoCommit ?? false;
 
   return (
     <main className="h-[100dvh] overflow-hidden grid grid-cols-2 bg-[var(--f4b-bg)] text-[var(--f4b-text-primary)]">
@@ -307,9 +308,16 @@ export default function ClientConvo4({
               />
             </div>
           )}
-          <div className="text-[12px] text-[var(--f4b-text-muted)] mt-2">
-            Click <b>Apply Patch</b> to commit this step.
-          </div>
+          {curStep && !stepAutoCommit && (
+            <div className="text-[12px] text-[var(--f4b-text-muted)] mt-2">
+              Click <b>Apply Patch</b> to commit this step.
+            </div>
+          )}
+          {curStep && stepAutoCommit && (
+            <div className="text-[12px] text-[var(--f4b-text-muted)] mt-2">
+              Changes save automatically for this step.
+            </div>
+          )}
         </div>
       </div>
 
